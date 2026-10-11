@@ -3,6 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="icon" href="data:,">
 <title>서울 라이브 3D · 지하철</title>
 <style>
   :root {
@@ -165,7 +166,13 @@
     .top .sub { display: block; margin: 4px 0 0; }
     .side { max-width: none; }
     .ticks span:nth-child(even):not(.current) { visibility: hidden; }
-    .scene-legend { right: 16px; }
+    /* 홀수 시간대가 현재일 때 양옆 눈금과 겹치지 않게 숨긴다. */
+    .ticks span:has(+ .current), .ticks .current + span { visibility: hidden; }
+    .ticks .current { justify-self: center; width: max-content; padding: 2px 3px; }
+    /* 좁은 화면에서는 범례가 지도를 가리지 않게 지도 아래로 내린다. */
+    .scene { height: auto; }
+    .scene-map { position: relative; height: 60vh; }
+    .scene-legend { position: static; border: 0; border-top: 1px solid var(--grid); border-radius: 0; }
   }
 </style>
 </head>
@@ -438,10 +445,10 @@ function selectEntry(entry) {
   selected = { entry, line: null };
   q.value = entry.name;
   results.replaceChildren();
-  // "선택 역 주변" 시점이 고른 역을 보게 한다.
+  // 고른 역이 화면 밖에 있을 수 있으므로 "선택 역 주변" 시점으로 옮긴다.
   if (entry.station) {
     VIEWS.near = { ...VIEWS.near, longitude: entry.station.position[0], latitude: entry.station.position[1] };
-    if (viewName === "near") goTo(VIEWS.near);
+    selectView("near");
   }
   renderLines();
   render();
@@ -653,6 +660,8 @@ async function loadTrains() {
     });
     const at = new Date(data.updatedAt).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
     trainsStatus.textContent = `실시간 열차 ${fmt(trains.length)}대 · ${at} 기준${data.sample ? " (sample 키: 노선마다 5대)" : ""}`;
+    const missing = data.trains.length - trains.length;
+    if (missing) trainsStatus.textContent += ` · 역 위치를 몰라 ${fmt(missing)}대 뺌`;
     if (data.errors.length) trainsStatus.textContent += ` · ${data.errors.map((e) => e.line).join("·")} 못 받음`;
   } catch (err) {
     trains = [];
