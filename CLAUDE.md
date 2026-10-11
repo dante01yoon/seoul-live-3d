@@ -18,6 +18,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
   - 역 좌표는 데이터에 없어서 `STATION_COORDS`에 WGS84 근사값을 직접 넣었다. 역을 추가하면 여기도 함께 추가해야 한다. 장면 1칸 = 100m(`UNIT_M`).
 - `stats.mjs`: `HOURS`, 필드 접근(`count`, `total`), 역 카드의 최다·가장 한가한 시간대 계산. `index.html`과 `tests/stats.test.mjs`가 함께 import한다. 데이터 필드에 접근할 때는 키 문자열을 직접 만들지 말고 `count`를 쓴다.
 - `subway-lines.mjs`: 노선(운행 계통)별 역 순서(`SUBWAY_LINES`). 역은 역사마스터의 `"역사_ID 역사명"`으로 적고, 순서는 직접 적었다(역사_ID 순서와 다르다). 고치면 `tests/subway-lines.test.mjs`의 거리·꺾임 검사를 통과해야 한다.
+- `realtime-trains.mjs`: 실시간 열차 위치 API 호출·20초 캐시·키 가리기(`createTrainsSource`). `server.mjs`와 `api/trains.js`(Vercel 함수, 키는 Vercel 환경 변수 `SEOUL_REALTIME_KEY`)가 함께 쓴다. Vercel 설정은 `vercel.json`(빌드 없음)과 `.vercelignore`(점 파일 제외).
 - `server.mjs`: 의존성 없는 Node 서버. 정적 파일(점으로 시작하는 경로는 404)과 `/api/trains`(실시간 열차 위치 프록시, 20초 캐시). 실시간 지하철 인증키는 `.env`의 `SEOUL_REALTIME_KEY`로 서버만 읽는다. 키를 브라우저 코드·응답·오류 문구에 넣지 않는다. 없으면 `sample` 키(노선마다 5대).
 - `train-positions.mjs`: API 열차 행 → 지도 좌표(`placeTrain`). API `statnId`는 역사_ID와 체계가 달라 역 이름(`stopKey`, 괄호 부역명 제거)으로 맞추고, 방향은 종착역 쪽(지선 너머면 갈라지는 역 쪽)으로 정한다. API 역 이름이 다르면 `API_NAME_ALIASES`에 넣는다.
 - 시간대 순서는 04시부터 다음 날 03시까지(`HOURS = (i + 4) % 24`). 승하차가 0명인 시간대(02·03시)는 운행하지 않는 때로 보고 "가장 한가한 때" 후보에서 뺀다.
