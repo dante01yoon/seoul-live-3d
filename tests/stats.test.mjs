@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
-import { HOURS, busiestHours, quietestHours } from "../stats.mjs";
+import { HOURS, busiestHours, quietestHours, usageMonth } from "../stats.mjs";
 
 const rows = JSON.parse(readFileSync("data/subway-hourly-202607.json", "utf8")).CardSubwayTime.row;
 const seoul = rows.find((r) => r.STTN === "서울역");
@@ -28,4 +28,17 @@ test("가장 한가한 때가 동률이면 모두 돌려준다", () => {
 test("서울역은 18시 승차, 08시 하차가 가장 많다", () => {
   assert.deepEqual(busiestHours(seoul, "ON"), [18]);
   assert.deepEqual(busiestHours(seoul, "OFF"), [8]);
+});
+
+test("데이터 기준 달은 USE_MM에서 읽고 그 달의 일수를 센다", () => {
+  assert.deepEqual(usageMonth(seoul), { year: 2026, month: 7, days: 31, label: "2026년 7월" });
+  assert.equal(usageMonth({ USE_MM: "202606" }).days, 30);
+  assert.equal(usageMonth({ USE_MM: "202402" }).days, 29);
+  assert.equal(usageMonth({ USE_MM: 202602 }).label, "2026년 2월");
+});
+
+test("데이터 기준 달 형식이 맞지 않으면 null이다", () => {
+  for (const USE_MM of [undefined, null, "", "2026-07", "202613", "202600", "2026070"]) {
+    assert.equal(usageMonth({ USE_MM }), null, String(USE_MM));
+  }
 });
