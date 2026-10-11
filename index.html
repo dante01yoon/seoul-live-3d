@@ -34,6 +34,7 @@
   .summary dt { display: inline-flex; align-items: center; gap: 6px; color: var(--text-secondary); }
   .summary dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; }
   .summary .dot { width: 8px; height: 8px; border-radius: 50%; }
+  .summary .basis { margin: 10px 0 0; color: var(--text-muted); font-size: 12px; }
   .tip { position: fixed; pointer-events: none; background: #1d212b; border: 1px solid #333; border-radius: 6px;
          padding: 6px 10px; font-size: 13px; line-height: 1.5; display: none; white-space: nowrap; }
   .tip .row { display: flex; align-items: center; gap: 6px; }
@@ -178,7 +179,8 @@ function drawSummary(row) {
       <dt>승차 최다</dt><dd>${hourNames(busiestHours(row, "ON"))}</dd>
       <dt>하차 최다</dt><dd>${hourNames(busiestHours(row, "OFF"))}</dd>
       <dt>가장 한가한 때</dt><dd>${hourNames(quietestHours(row))}</dd>
-    </dl>`;
+    </dl>
+    <p class="basis">데이터 기준 ${row.USE_MM.slice(0, 4)}년 ${Number(row.USE_MM.slice(4))}월</p>`;
   document.getElementById("summary").append(card);
 }
 
