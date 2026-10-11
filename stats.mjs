@@ -22,3 +22,13 @@ export const busiestHours = (row, kind) => bestHours(HOURS, (h) => count(row, h,
 // 승하차가 0명인 시간대는 운행하지 않는 때라서 후보에서 뺀다.
 export const quietestHours = (row) =>
   bestHours(HOURS.filter((h) => total(row, h) > 0), (h) => total(row, h), (a, b) => a < b);
+
+// 데이터 기준 달. USE_MM("202607")을 읽어 연·월·그 달의 일수와 표시 문구를 돌려준다.
+// 형식이 맞지 않으면 null이다.
+export function usageMonth(row) {
+  const m = /^(\d{4})(\d{2})$/.exec(String(row.USE_MM ?? ""));
+  if (!m) return null;
+  const year = Number(m[1]), month = Number(m[2]);
+  if (month < 1 || month > 12) return null;
+  return { year, month, days: new Date(year, month, 0).getDate(), label: `${year}년 ${month}월` };
+}
