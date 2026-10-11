@@ -24,6 +24,7 @@
     --band-quiet: #1c2a24;   /* 하루 띠: 한산(피크 대비 30% 미만) */
     --band-mid: #3a3320;     /* 하루 띠: 보통(30–60%) */
     --band-busy: #4a2422;    /* 하루 띠: 붐빔(60% 이상) */
+    --train: #5ce1e6;        /* 실시간 열차 점 */
   }
   * { box-sizing: border-box; }
   body { font-family: system-ui, sans-serif; background: var(--surface); color: var(--text-primary); margin: 24px; }
@@ -135,6 +136,11 @@
   .scene-legend span { display: inline-flex; align-items: center; gap: 8px; }
   .scene-legend i { width: 10px; height: 10px; border-radius: 2px; }
   .scene-legend .ramp { width: 48px; background: linear-gradient(to right, var(--ramp-low), var(--ramp-high)); }
+  .scene-legend .train { width: 10px; border-radius: 50%; background: var(--train); }
+  .scene-legend .live { flex-wrap: wrap; }
+  .scene-legend .live-text { align-items: flex-start; }
+  .scene-legend .live-text i { flex: none; margin-top: 4px; }
+  .scene-legend .live .chip { min-height: 28px; padding: 0 10px; font-size: 12px; }
 
   /* 시간 슬라이더 */
   .timeline { flex-direction: row; align-items: center; gap: 14px; }
@@ -159,6 +165,7 @@
     .top .sub { display: block; margin: 4px 0 0; }
     .side { max-width: none; }
     .ticks span:nth-child(even):not(.current) { visibility: hidden; }
+    .scene-legend { right: 16px; }
   }
 </style>
 </head>
@@ -240,6 +247,8 @@
           <span><i style="background: var(--answer)"></i>선택한 역</span>
           <span>적음 <i class="ramp"></i> 많음 (그 시간대 인원)</span>
           <span id="legend-scale">기둥 높이 = 하루 평균 승차+하차</span>
+          <span class="live"><span class="live-text"><i class="train"></i><span id="trains-status">실시간 열차 불러오는 중…</span></span>
+            <button type="button" class="chip" id="trains-toggle" aria-pressed="true" aria-label="실시간 열차 숨기기">숨기기</button></span>
         </div>
       </div>
 
@@ -261,7 +270,7 @@
     <p>한 달 합계를 일수로 나눈 값입니다. 평일과 주말이 섞여 있습니다.<br>
        개찰구를 지난 승하차 기준입니다. 갈아타는 사람은 포함되지 않습니다.<br>
        역이 한가한 정도이고, 열차 안 혼잡도와는 다를 수 있습니다.</p>
-    <p>데이터: 서울시 지하철 호선별 역별 시간대별 승하차 인원 정보(2026년 9월), 서울시 역사마스터 정보 — 서울특별시, 공공누리 제1유형(출처 표시)</p>
+    <p>데이터: 서울시 지하철 호선별 역별 시간대별 승하차 인원 정보(2026년 9월), 서울시 역사마스터 정보, 서울시 지하철 실시간 열차 위치정보 — 서울특별시, 공공누리 제1유형(출처 표시)</p>
   </footer>
 </div>
 
@@ -269,9 +278,11 @@
 <script src="https://cdn.jsdelivr.net/npm/deck.gl@9.0.38/dist.min.js"></script>
 <script type="module">
 // 역 검색 → 답 카드·하루 띠·2D 차트, 그리고 3D 지도(deck.gl)와 시간 재생. 지도 기둥을 눌러도 역이 골라진다.
+// 실시간 열차 위치는 server.mjs(/api/trains)가 인증키를 붙여 받아 온다. 브라우저에는 키가 없다.
 import { HOURS, total, usageMonth, quietestInWindow, peakRatio, WINDOW_PRESETS, DEFAULT_WINDOW_ID } from "./stats.mjs";
 import { SUBWAY_CSV, STATION_MASTER_CSV, fetchCsv, toSubwayRows, mergeStations, stationLocator } from "./subway-csv.mjs";
 import { SUBWAY_LINES, DUPLICATE_STATIONS, parseStop } from "./subway-lines.mjs";
+import { lineGeometry, placeTrain } from "./train-positions.mjs";
 
 const pad = (h) => String(h).padStart(2, "0");
 const hourLabel = (h) => `${pad(h)}시대`;
@@ -610,6 +621,69 @@ for (const [id, dz] of [["zoom-in", 1], ["zoom-out", -1]]) {
   document.getElementById(id).addEventListener("click", () => goTo({ ...viewState, zoom: viewState.zoom + dz }));
 }
 
+// ---- 실시간 열차 ----
+// 화면이 보이고 "숨기기"를 누르지 않았을 때만 TRAINS_MS마다 다시 받는다(서버도 20초 동안 같은 응답을 돌려준다).
+const TRAINS_MS = 30_000;
+const TRAIN_RGB = cssRgb("--train");
+const trainsStatus = document.getElementById("trains-status");
+const trainsToggle = document.getElementById("trains-toggle");
+let trainGeo = null; // lineGeometry(역사마스터)
+let trains = [];     // API 행 + placeTrain 결과
+let showTrains = true;
+let trainTimer = null;
+let pollGen = 0;
+const unplaced = new Set(); // 지도에 못 놓은 "노선 역" (콘솔 경고는 한 번만)
+const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
+
+async function loadTrains() {
+  try {
+    const res = await fetch("api/trains");
+    if (!res.ok || !res.headers.get("content-type")?.includes("json")) {
+      throw new Error(res.status === 404 ? "npm start로 연 서버에서만 보입니다" : `HTTP ${res.status}`);
+    }
+    const data = await res.json();
+    trains = data.trains.flatMap((t) => {
+      const placed = placeTrain(trainGeo, t);
+      const key = `${t.subwayNm} ${t.statnNm}`;
+      if (!placed && !unplaced.has(key)) {
+        unplaced.add(key);
+        console.warn("노선 순서에서 역을 찾지 못해 지도에서 뺀 열차", key);
+      }
+      return placed ? [{ ...t, ...placed }] : [];
+    });
+    const at = new Date(data.updatedAt).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+    trainsStatus.textContent = `실시간 열차 ${fmt(trains.length)}대 · ${at} 기준${data.sample ? " (sample 키: 노선마다 5대)" : ""}`;
+    if (data.errors.length) trainsStatus.textContent += ` · ${data.errors.map((e) => e.line).join("·")} 못 받음`;
+  } catch (err) {
+    trains = [];
+    trainsStatus.textContent = `실시간 열차를 불러오지 못했습니다: ${err.message}`;
+  }
+  refreshMap();
+}
+async function pollTrains() {
+  clearTimeout(trainTimer);
+  const gen = ++pollGen;
+  if (!showTrains || document.hidden || !trainGeo) return;
+  await loadTrains();
+  if (gen === pollGen && showTrains && !document.hidden) trainTimer = setTimeout(pollTrains, TRAINS_MS);
+}
+document.addEventListener("visibilitychange", pollTrains);
+trainsToggle.addEventListener("click", () => {
+  showTrains = !showTrains;
+  trainsToggle.textContent = showTrains ? "숨기기" : "보이기";
+  trainsToggle.setAttribute("aria-label", showTrains ? "실시간 열차 숨기기" : "실시간 열차 보이기");
+  trainsToggle.setAttribute("aria-pressed", String(showTrains));
+  pollTrains();
+  refreshMap();
+});
+
+function trainTooltip(t) {
+  const tags = [t.directAt === "1" ? "급행" : t.directAt === "7" ? "특급" : "", t.lstcarAt === "1" ? "막차" : ""].filter(Boolean);
+  return `<b>${esc(t.subwayNm)} ${esc(t.trainNo)} 열차</b>${tags.length ? ` <small>${esc(tags.join("·"))}</small>` : ""}<br>`
+    + `${esc(t.statnNm)} ${esc(t.status)} · ${esc(String(t.statnTnm).replace(/종착$/, ""))}행<br>`
+    + `<small>${esc(String(t.recptnDt).slice(11))} 수신</small>`;
+}
+
 // 노선 선: SUBWAY_LINES의 역 순서를 역사마스터 좌표로 잇는다. 공식 노선색을 확인하기 전이라 한 가지 회색으로 그린다.
 function linePaths(master) {
   const byId = new Map(master.map((r) => [r["역사_ID"], [Number(r["경도"]), Number(r["위도"])]]));
@@ -654,6 +728,7 @@ Promise.all([fetchCsv(SUBWAY_CSV), fetchCsv(STATION_MASTER_CSV)])
     yMax = niceMax(Math.max(...stations.flatMap((s) => s.daily)));
     document.getElementById("legend-scale").textContent = `기둥 높이 = 하루 평균 승차+하차 (최대 눈금 ${fmt(yMax)}명)`;
     const paths = linePaths(master);
+    trainGeo = lineGeometry(master);
 
     const layers = (i) => [
       new deck.PathLayer({
@@ -673,6 +748,14 @@ Promise.all([fetchCsv(SUBWAY_CSV), fetchCsv(STATION_MASTER_CSV)])
         transitions: reduceMotion ? {} : { getElevation: { duration: STEP_MS * 0.85, easing: (t) => t * (2 - t) } },
         onClick: ({ object }) => object && selectEntry(object.entry),
       }),
+      // 열차 점은 기둥에 가려지지 않게 깊이 검사 없이 맨 위에 그린다. 급행·특급은 조금 크게.
+      new deck.ScatterplotLayer({
+        id: "trains", data: showTrains ? trains : [], pickable: true,
+        getPosition: (d) => d.position, getFillColor: TRAIN_RGB,
+        radiusUnits: "pixels", getRadius: (d) => (d.directAt === "1" || d.directAt === "7" ? 6 : 4.5),
+        stroked: true, getLineColor: [16, 19, 26], lineWidthUnits: "pixels", getLineWidth: 1.5,
+        parameters: { depthCompare: "always" },
+      }),
     ];
 
     statusEl.textContent = "";
@@ -683,13 +766,14 @@ Promise.all([fetchCsv(SUBWAY_CSV), fetchCsv(STATION_MASTER_CSV)])
       onViewStateChange: ({ viewState: vs }) => { viewState = vs; },
       layers: layers(Number(slider.value)),
       getCursor: ({ isHovering, isDragging }) => (isDragging ? "grabbing" : isHovering ? "pointer" : "grab"),
-      getTooltip: ({ object }) => object && {
-        html: `<b>${object.name}</b> <small>${object.lines}</small><br>${hourLabel(HOURS[Number(slider.value)])} 하루 평균 <b>${fmt(object.daily[Number(slider.value)])}명</b><br><small>눌러서 이 역 고르기</small>`,
+      getTooltip: ({ object, layer }) => object && {
+        html: layer.id === "trains" ? trainTooltip(object) : `<b>${object.name}</b> <small>${object.lines}</small><br>${hourLabel(HOURS[Number(slider.value)])} 하루 평균 <b>${fmt(object.daily[Number(slider.value)])}명</b><br><small>눌러서 이 역 고르기</small>`,
         style: { background: "#171b23", color: "#e8e6df", border: "1px solid #343a48", borderRadius: "8px", fontSize: "13px", padding: "8px 10px" },
       },
     });
     refreshMap = () => deckgl.setProps({ layers: layers(Number(slider.value)) });
     showResults(); // 불러오는 동안 입력한 검색어가 있으면 결과를 보여 준다
+    pollTrains();
   })
   .catch((err) => {
     console.error(err);

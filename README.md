@@ -27,7 +27,16 @@
 - 출처: 서울특별시, 공공누리 제1유형(출처 표시).
 
 ## 보기
-이 폴더에서 `python3 -m http.server 8000` 후 http://127.0.0.1:8000 을 엽니다. 데이터를 `fetch`로 읽고 ES 모듈을 쓰기 때문에 `index.html`을 파일로 바로 열면(`file://`) 동작하지 않습니다.
+이 폴더에서 `npm start`(Node 22 이상) 후 http://127.0.0.1:8000 을 엽니다. 데이터를 `fetch`로 읽고 ES 모듈을 쓰기 때문에 `index.html`을 파일로 바로 열면(`file://`) 동작하지 않습니다.
+
+`server.mjs`는 저장소 파일을 내보내면서 `/api/trains`로 실시간 열차 위치를 대신 받아 줍니다. `.env`, `.git`처럼 점으로 시작하는 경로는 내보내지 않습니다. `python3 -m http.server`로 열어도 승하차 화면은 보이지만 실시간 열차는 나오지 않고, `.env`까지 그대로 내보내므로 쓰지 않는 편이 좋습니다.
+
+### 실시간 열차 위치 (`subway.html`)
+- API: 서울 열린데이터광장 「서울시 지하철 실시간 열차 위치정보」(`realtimePosition`), `http://swopenapi.seoul.go.kr/api/subway/<인증키>/json/realtimePosition/0/<끝>/<노선명>`.
+- 인증키는 일반 인증키와 따로 발급하는 **실시간 지하철 인증키**입니다. `.env`에 `SEOUL_REALTIME_KEY=발급받은키`로 넣으면 서버만 읽고 브라우저로 보내지 않습니다. 없으면 공개 `sample` 키를 써서 노선마다 열차 5대만 보입니다.
+- 서버는 노선 19개(경전철·인천 1·2호선은 API가 위치를 주지 않음)를 20초에 한 번만 묻고, 화면은 보일 때만 30초마다 다시 받습니다.
+- API는 "어느 역에 진입·도착·출발"만 줍니다. 지도 위치는 `subway-lines.mjs`의 역 순서와 역사마스터 좌표로 `train-positions.mjs`가 정합니다.
+- 출처: 서울특별시 (https://data.seoul.go.kr/dataList/OA-12601/A/1/datasetView.do), 공공누리 제1유형(출처 표시).
 
 맨 위 3D 장면은 역마다 승차·하차 기둥을 세우고, 시간 슬라이더로 시간대를 바꾸면 높이가 바뀝니다. 역 좌표는 데이터에 없어 `index.html`에 근사값으로 넣었습니다. 3D 렌더링에는 [Three.js](https://threejs.org/)(MIT, CDN 로드)를 씁니다.
 
