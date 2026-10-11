@@ -94,7 +94,7 @@
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { CSS2DRenderer, CSS2DObject } from "three/addons/renderers/CSS2DRenderer.js";
-import { HOURS, count, busiestHours, quietestHours, usageMonth } from "./stats.mjs";
+import { HOURS, count, busiestHours, quietestInWindow, usageMonth } from "./stats.mjs";
 
 const W = 340, H = 180, M = { top: 10, right: 8, bottom: 22, left: 40 };
 const fmt = (n) => n.toLocaleString("ko-KR");
@@ -179,7 +179,7 @@ function drawSummary(row) {
       <dt><i class="dot" style="background: var(--series-off)"></i>하루 평균 하차</dt><dd>${daily("OFF")}</dd>
       <dt>승차 최다</dt><dd>${hourNames(busiestHours(row, "ON"))}</dd>
       <dt>하차 최다</dt><dd>${hourNames(busiestHours(row, "OFF"))}</dd>
-      <dt>가장 한가한 때</dt><dd>${hourNames(quietestHours(row))}</dd>
+      <dt>가장 한가한 때</dt><dd>${hourNames(quietestInWindow(row, HOURS))}</dd>
     </dl>
     ${month ? `<p class="basis">데이터 기준 ${month.label}</p>` : ""}`;
   document.getElementById("summary").append(card);

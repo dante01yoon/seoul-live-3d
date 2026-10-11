@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
-import { HOURS, busiestHours, quietestHours, usageMonth } from "../stats.mjs";
+import {
+  DEFAULT_WINDOW_ID, HOURS, WINDOW_PRESETS, busiestHours, peakRatio, quietestInWindow, usageMonth,
+} from "../stats.mjs";
 
 const rows = JSON.parse(readFileSync("data/subway-hourly-202607.json", "utf8")).CardSubwayTime.row;
 const seoul = rows.find((r) => r.STTN === "서울역");
@@ -16,13 +18,51 @@ const fakeRow = (totals) => {
   return row;
 };
 
-test("가장 한가한 때는 운행하지 않는 02·03시를 빼고 고른다", () => {
-  for (const row of rows) assert.ok(!quietestHours(row).some((h) => h === 2 || h === 3), row.STTN);
-  assert.deepEqual(quietestHours(seoul), [1]);
+const dayWindow = WINDOW_PRESETS.find((w) => w.id === "day").hours;
+
+test("하루 전체 창: 가장 한가한 때는 운행하지 않는 02·03시를 빼고 고른다", () => {
+  for (const row of rows) assert.ok(!quietestInWindow(row, HOURS).some((h) => h === 2 || h === 3), row.STTN);
+  assert.deepEqual(quietestInWindow(seoul, HOURS), [1]);
 });
 
-test("가장 한가한 때가 동률이면 모두 돌려준다", () => {
-  assert.deepEqual(quietestHours(fakeRow({ 4: 5, 10: 9, 1: 5 })), [4, 1]);
+test("시간 창 프리셋은 출근·낮·퇴근·저녁이고 기본은 낮(10–15시대)이다", () => {
+  assert.deepEqual(WINDOW_PRESETS.map((w) => w.label), ["출근", "낮", "퇴근", "저녁"]);
+  assert.equal(DEFAULT_WINDOW_ID, "day");
+  assert.deepEqual(dayWindow, [10, 11, 12, 13, 14, 15]);
+  for (const w of WINDOW_PRESETS) for (const h of w.hours) assert.ok(HOURS.includes(h), `${w.label} ${h}`);
+});
+
+test("창 안에서 0명인 시간대는 후보에서 빠진다", () => {
+  assert.deepEqual(quietestInWindow(fakeRow({ 10: 0, 11: 7, 12: 3 }), [10, 11, 12]), [12]);
+});
+
+test("창 안에서 동률이면 모두 돌려준다", () => {
+  assert.deepEqual(quietestInWindow(fakeRow({ 4: 5, 10: 9, 1: 5 }), HOURS), [4, 1]);
+  assert.deepEqual(quietestInWindow(fakeRow({ 10: 4, 11: 8, 12: 4 }), [10, 11, 12]), [10, 12]);
+});
+
+test("자정을 넘는 창([22, 23, 0, 1])도 HOURS 순서대로 동작한다", () => {
+  assert.deepEqual(quietestInWindow(fakeRow({ 22: 9, 23: 2, 0: 2, 1: 6 }), [22, 23, 0, 1]), [23, 0]);
+  assert.deepEqual(quietestInWindow(seoul, [22, 23, 0, 1]), [1]);
+});
+
+test("창 안이 전부 0이면 []를 돌려준다", () => {
+  assert.deepEqual(quietestInWindow(fakeRow({ 8: 100 }), dayWindow), []);
+  assert.deepEqual(quietestInWindow(seoul, [2, 3]), []);
+});
+
+test("서울역(7월)의 낮 창 답은 14시대다", () => {
+  // 10–15시대 승하차: 224,318 231,780 266,049 246,602 219,054 270,080
+  assert.deepEqual(quietestInWindow(seoul, dayWindow), [14]);
+});
+
+test("피크 대비는 그 시간대 값 ÷ 하루 전체 최댓값이다", () => {
+  // 서울역 하루 최대는 18시대 487,725명
+  assert.equal(peakRatio(seoul, 18), 1);
+  assert.equal(peakRatio(seoul, 14), 219054 / 487725);
+  assert.equal(Math.round(peakRatio(seoul, 14) * 100), 45);
+  assert.equal(peakRatio(seoul, 2), 0);
+  assert.equal(peakRatio(fakeRow({}), 10), 0);
 });
 
 test("서울역은 18시 승차, 08시 하차가 가장 많다", () => {
