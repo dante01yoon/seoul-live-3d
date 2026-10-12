@@ -52,6 +52,12 @@
   .diff h2 a { color: inherit; }
   .delta { color: var(--text-secondary); }
   .scroll { overflow-x: auto; }
+  .visit { margin-top: 16px; }
+  .slots { display: grid; grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); gap: 6px; list-style: none; padding: 0; margin: 8px 0; }
+  .slot { border: 1px solid var(--border); border-top: 4px solid var(--congest-none); border-radius: 8px; padding: 4px 6px; font-size: .8rem; color: var(--text-secondary); }
+  .slot b { display: block; font-size: .95rem; color: var(--text-primary); }
+  .slot.pick { outline: 2px solid var(--answer); outline-offset: 1px; }
+  .slot.pick b::after { content: " 추천"; font-size: .75rem; font-weight: normal; color: var(--answer); }
   .warn { border-left: 4px solid var(--congest-3); padding-left: 8px; color: var(--text-secondary); }
   footer { margin-top: 24px; font-size: .8rem; color: var(--text-muted); }
   @media (max-width: 600px) {
@@ -125,6 +131,25 @@ function diffHtml(d, s) {
   </section>`;
 }
 
+// 오늘 VISIT_PLACE 가기 좋은 시각: 지금과 예측을 시각 칸으로 늘어놓고, claude가 고른 시각(summary.visit.best)에 테두리를 친다.
+function visitHtml(v, s) {
+  if (!v) return "";
+  const title = `오늘 ${esc(v.name)} 가기 좋은 시각`;
+  if (v.error) return `<section class="visit"><h2>${title}</h2><p class="warn">받지 못했습니다: ${esc(v.error)}</p></section>`;
+  const best = s?.visit?.best ?? [];
+  const picks = new Set(best.map((b) => b.time));
+  const slot = (x, label) => `<li class="slot${picks.has(x.time) ? " pick" : ""}" style="border-top-color:var(${congestCss(x.level)})">
+    <b>${esc(x.time ?? "–")}</b>${label ? `<small>${label} · </small>` : ""}${esc(x.level)}<br><small>${x.population ? `${fmt(x.population.min)}~${fmt(x.population.max)}` : "–"}</small></li>`;
+  return `<section class="visit">
+    <h2>${title}</h2>
+    ${s?.visit ? `<p>${esc(s.visit.summary)}</p>` : ""}
+    ${best.length ? `<ul>${best.map((b) => `<li><b>${esc(b.time)}</b> — ${esc(b.note)}</li>`).join("")}</ul>` : ""}
+    ${s?.visit?.avoid ? `<p class="muted">${esc(s.visit.avoid)}</p>` : ""}
+    <ul class="slots" aria-label="시각별 혼잡도 예측">${slot(v.now, "지금")}${v.forecast.map((f) => slot(f)).join("")}</ul>
+    <small>${v.forecast.length ? "칸 위 색은 혼잡도, 아래 숫자는 추정 인구(명)입니다. 지금 다음 칸부터는 서울시 12시간 예측입니다." : "오늘 남은 시각의 예측이 없습니다."}</small>
+  </section>`;
+}
+
 function placesHtml(p, s) {
   if (p.error) return `<section><h2>장소 혼잡도</h2><p class="warn">받지 못했습니다: ${esc(p.error)}</p></section>`;
   const total = CONGEST.reduce((n, [l]) => n + (p.levels[l] ?? 0), 0);
@@ -160,7 +185,7 @@ async function show(date) {
   try {
     const r = await getJson(`${date}.json`);
     const meta = [`${r.date}(${r.weekday}) ${kstTime(r.generatedAt)} 기준`, r.model, r.costUsd != null ? `$${r.costUsd.toFixed(4)}` : null].filter(Boolean).join(" · ");
-    $report.innerHTML = `<p class="meta">${esc(meta)}</p>${summaryHtml(r.summary, r.summaryError)}${diffHtml(r.diff, r.summary)}
+    $report.innerHTML = `<p class="meta">${esc(meta)}</p>${summaryHtml(r.summary, r.summaryError)}${visitHtml(r.facts.visit, r.summary)}${diffHtml(r.diff, r.summary)}
       <div class="grid">${placesHtml(r.facts.places, r.summary)}${bikesHtml(r.facts.bikes, r.summary)}</div>`;
   } catch (err) {
     $report.innerHTML = `<p class="warn">리포트를 읽지 못했습니다: ${esc(err.message)}</p>`;

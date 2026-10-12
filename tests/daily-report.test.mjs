@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { kstDate, parseClaudeResult, previousDate, reportDiff, reportFacts, reportPrompt, upsertIndex } from "../daily-report.mjs";
+import { VISIT_PLACE, kstDate, parseClaudeResult, previousDate, reportDiff, reportFacts, reportPrompt, upsertIndex } from "../daily-report.mjs";
 import { toBikeStation } from "../realtime-bikes.mjs";
 
 const area = (code, level, min, max, forecast = []) => ({ code, name: `장소${code}`, now: { time: "2026-10-12 08:00", level, min, max }, forecast });
@@ -67,7 +67,7 @@ test("받지 못한 데이터는 error로 남기고 프롬프트에 날짜와 �
 });
 
 test("claude -p JSON 결과에서 structured_output을 꺼낸다", () => {
-  const summary = { headline: "h", overview: "o", crowd: { summary: "c", hotspots: [] }, bike: { summary: "b", notes: [] }, tips: [] };
+  const summary = { headline: "h", overview: "o", changes: "", crowd: { summary: "c", hotspots: [] }, bike: { summary: "b", notes: [] }, visit: { summary: "v", best: [{ time: "10:00", note: "여유" }], avoid: "" }, tips: [] };
   const ok = JSON.stringify({ type: "result", subtype: "success", is_error: false, structured_output: summary, total_cost_usd: 0.01, modelUsage: { "claude-opus-5-5": {} } });
   assert.deepEqual(parseClaudeResult(ok), { summary, model: "claude-opus-5-5", costUsd: 0.01 });
   assert.throws(() => parseClaudeResult(JSON.stringify({ subtype: "error_max_turns", is_error: true })), /claude 실행 실패/);
@@ -154,4 +154,29 @@ test("지난 리포트가 없거나, 한쪽을 받지 못했거나, 장소별 �
   assert.deepEqual(diff.places.levels.여유, { prev: 0, now: 1, delta: 1 });
   assert.deepEqual(diff.bikes, { error: "이번 리포트에서 받지 못함" });
   assert.deepEqual(reportDiff({ ...prev, facts: { ...prev.facts, places: { error: "x" } } }, facts).places, { error: "지난 리포트에서 받지 못함" });
+});
+
+test("광화문·덕수궁의 지금 값과 오늘 안의 예측만 visit에 넣고 프롬프트에 고르는 규칙을 적는다", () => {
+  const f = (time, level, min, max) => ({ time, level, min, max });
+  const gwanghwamun = {
+    code: "POI009",
+    name: VISIT_PLACE,
+    now: { time: "2026-10-12 21:50", level: "여유", min: 3000, max: 3500 },
+    forecast: [f("2026-10-12 22:00", "여유", 2000, 2500), f("2026-10-12 23:00", "보통", null, null), f("2026-10-13 00:00", "여유", 1000, 1500)],
+  };
+  const citydata = { sample: true, areas: [area("POI001", "붐빔", 1, 2), gwanghwamun], errors: [] };
+  const facts = reportFacts({ citydata, bikes: null, now: new Date("2026-10-12T12:55:00Z") });
+  assert.deepEqual(facts.visit, {
+    name: VISIT_PLACE,
+    now: { time: "21:50", level: "여유", population: { min: 3000, max: 3500 } },
+    // 다음 날(00:00)은 오늘이 아니라 뺀다.
+    forecast: [{ time: "22:00", level: "여유", population: { min: 2000, max: 2500 } }, { time: "23:00", level: "보통", population: null }],
+  });
+  const prompt = reportPrompt(facts);
+  assert.match(prompt, /visit\.best는 visit\.now·visit\.forecast의 시각 중에서만/);
+  assert.deepEqual(JSON.parse(prompt.slice(prompt.lastIndexOf("\n") + 1)).visit, facts.visit);
+
+  // 그 장소가 없거나 도시데이터를 받지 못했으면 error.
+  assert.deepEqual(reportFacts({ citydata: { ...citydata, areas: [] }, bikes: null }).visit, { name: VISIT_PLACE, error: "받지 못함" });
+  assert.deepEqual(reportFacts({ citydata: { error: "HTTP 500" }, bikes: null }).visit, { name: VISIT_PLACE, error: "HTTP 500" });
 });

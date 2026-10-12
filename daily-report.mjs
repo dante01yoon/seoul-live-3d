@@ -7,6 +7,8 @@ import { CONGEST_LEVELS } from "./citydata-areas.mjs";
 export const TOP_PLACES = 10;
 export const TOP_CALM = 5;
 export const TOP_BIKE = 5;
+// 리포트에서 오늘 가기 좋은 시각을 고르는 장소(sample 키로도 받는 곳).
+export const VISIT_PLACE = "광화문·덕수궁";
 
 const KST_MS = 9 * 3600_000;
 const WEEKDAYS = ["일", "월", "화", "수", "목", "금", "토"];
@@ -24,7 +26,17 @@ const population = (p) => (Number.isFinite(p.min) && Number.isFinite(p.max) ? { 
 // citydata: createCitydataSource().citydata() 결과, categories: 장소 코드 → 분류, bikes: createBikeSource().stations() 결과.
 // 어느 한쪽을 받지 못했으면 { error }를 넘긴다.
 export function reportFacts({ citydata, categories = new Map(), bikes, now = new Date() }) {
-  return { ...kstDate(now), generatedAt: now.toISOString(), places: placeFacts(citydata, categories), bikes: bikeFacts(bikes) };
+  const day = kstDate(now);
+  return { ...day, generatedAt: now.toISOString(), places: placeFacts(citydata, categories), bikes: bikeFacts(bikes), visit: visitFacts(citydata, day.date) };
+}
+
+// VISIT_PLACE의 지금 값과 오늘(KST) 안의 12시간 예측. 시각은 "HH:MM"만 남긴다(claude가 고른 시각과 화면에서 맞춰 본다).
+function visitFacts(citydata, date) {
+  if (!citydata || citydata.error) return { name: VISIT_PLACE, error: citydata?.error ?? "받지 못함" };
+  const a = citydata.areas.find((x) => x.name === VISIT_PLACE);
+  if (!a) return { name: VISIT_PLACE, error: "받지 못함" };
+  const slot = (x) => ({ time: x.time?.slice(11, 16) ?? null, level: x.level, population: population(x) });
+  return { name: a.name, now: slot(a.now), forecast: a.forecast.filter((f) => f.time?.startsWith(date)).map(slot) };
 }
 
 function placeFacts(citydata, categories) {
@@ -87,7 +99,7 @@ function bikeFacts(bikes) {
 export const REPORT_SCHEMA = {
   type: "object",
   additionalProperties: false,
-  required: ["headline", "overview", "changes", "crowd", "bike", "tips"],
+  required: ["headline", "overview", "changes", "crowd", "bike", "visit", "tips"],
   properties: {
     headline: { type: "string", description: "오늘 아침 서울을 한 문장으로" },
     overview: { type: "string", description: "전체 요약 2~3문장" },
@@ -116,6 +128,29 @@ export const REPORT_SCHEMA = {
       required: ["summary", "notes"],
       properties: { summary: { type: "string" }, notes: { type: "array", maxItems: 4, items: { type: "string" } } },
     },
+    visit: {
+      type: "object",
+      additionalProperties: false,
+      required: ["summary", "best", "avoid"],
+      properties: {
+        summary: { type: "string", description: `오늘 ${VISIT_PLACE}에 가기 좋은 때 1~2문장` },
+        best: {
+          type: "array",
+          maxItems: 3,
+          description: "가기 좋은 시각(좋은 순). 예측이 없으면 빈 배열",
+          items: {
+            type: "object",
+            additionalProperties: false,
+            required: ["time", "note"],
+            properties: {
+              time: { type: "string", description: "visit.now 또는 visit.forecast의 time 값 그대로(HH:MM)" },
+              note: { type: "string", description: "고른 까닭(단계·추정 인구) 짧게" },
+            },
+          },
+        },
+        avoid: { type: "string", description: "피하면 좋은 시각 1문장. 없으면 빈 문자열" },
+      },
+    },
     tips: { type: "array", maxItems: 4, items: { type: "string" }, description: "오늘 다닐 때 참고할 짧은 조언" },
   },
 };
@@ -126,6 +161,7 @@ export function reportPrompt(facts, diff = null) {
     `아래 JSON은 ${facts.date}(${facts.weekday}) 아침에 받은 서울 실시간 데이터를 정리한 것입니다.`,
     "- places: 서울시 주요 121장소의 실시간 혼잡도(여유·보통·약간 붐빔·붐빔)와 추정 인구 범위(population), 12시간 예측에서 단계가 오르는 곳(rising).",
     "- bikes: 따릉이 대여소 현황. empty = 자전거 0대, low = 1~2대, full = 거치율 100% 이상인 대여소 수, shared = 거치율(%).",
+    `- visit: ${VISIT_PLACE}의 지금(now)과 오늘 안의 12시간 예측(forecast). time은 HH:MM, level은 혼잡도 단계, population은 추정 인구 범위.`,
     "- sample이 true면 공개 sample 키로 받은 일부 데이터뿐이니 그렇다고 밝히세요. error가 있으면 그 부분은 받지 못했다고만 쓰세요.",
     diff
       ? `- diff: 지난 리포트(${diff.previous.date} ${diff.previous.weekday}요일, ${diff.hours != null ? `${diff.hours}시간 전` : "시각 모름"})와 비교한 값. prev = 지난번, now = 이번, delta = 차이. worse/better = 단계가 오른/내린 장소(worseCount/betterCount가 전체 수). worse/better가 null이면 장소별 단계 변화는 알 수 없으니 바뀐 곳이 없다고 쓰지 마세요. sampleChanged가 true면 받은 범위가 달라 비교가 어렵다고 밝히세요.`
@@ -135,6 +171,7 @@ export function reportPrompt(facts, diff = null) {
     "- 데이터에 없는 사실(날씨, 행사, 원인 추측)은 지어내지 마세요.",
     "- 숫자는 데이터 값을 그대로 쓰고 천 단위 쉼표를 찍으세요(예: 12,345).",
     "- 문장은 짧고 담백하게 쓰세요.",
+    `- visit.best는 visit.now·visit.forecast의 시각 중에서만 고르세요. 단계가 낮은 시각이 먼저, 같으면 추정 인구가 적은 시각이 먼저입니다. 모든 시각이 같은 단계면 그렇다고 밝히세요. 예측이 없거나 error가 있으면 best는 빈 배열로 두고 summary에 받지 못했다고 쓰세요.`,
     "",
     JSON.stringify(diff ? { ...facts, places, diff } : { ...facts, places }),
   ].join("\n");
