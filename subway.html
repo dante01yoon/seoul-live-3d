@@ -112,6 +112,17 @@
   .answer .detail b { font-variant-numeric: tabular-nums; }
   .ratio { height: 8px; border-radius: 4px; background: #2b2a26; overflow: hidden; }
   .ratio i { display: block; height: 100%; width: 0; background: var(--answer); }
+  /* 답 카드: 가까운 도시데이터 장소의 지금 혼잡도 */
+  .nearby { display: flex; flex-direction: column; gap: 4px; margin-top: 4px; }
+  .nearby[hidden] { display: none; }
+  .nearby h3 { margin: 0; font-size: 12px; font-weight: 600; color: var(--text-secondary); }
+  .nearby ul { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+  .nearby button { width: 100%; min-height: 36px; display: flex; align-items: center; gap: 8px; padding: 0 8px; border: 0;
+                   border-radius: 8px; background: transparent; color: inherit; font: inherit; font-size: 13px; text-align: left; cursor: pointer; }
+  .nearby button:hover { background: var(--answer-line); }
+  .nearby i { flex: none; width: 10px; height: 10px; border-radius: 50%; }
+  .nearby .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .nearby small { flex: none; color: var(--text-muted); font-variant-numeric: tabular-nums; }
   .answer .basis { margin: 6px 0 0; font-size: 12px; line-height: 1.6; color: var(--text-secondary); }
 
   /* 하루 띠: 24칸, 칸마다 글자(한·보·붐)를 함께 쓴다 */
@@ -331,6 +342,7 @@
         <div class="hour">—</div>
         <div class="detail">역을 고르면 이 시간 창에서 가장 한가한 시간대를 알려 드립니다.</div>
         <div class="ratio" aria-hidden="true"><i></i></div>
+        <div class="nearby" id="nearby" hidden><h3>가까운 장소 · 지금 혼잡도</h3><ul></ul></div>
         <p class="basis">데이터 기준 <span class="data-month">2026년 9월</span>, 한 달 합계를 일수로 나눈 값.<br>평일과 주말이 섞여 있고 개찰구 승하차 기준입니다(갈아타는 사람 제외).<br>역이 한가한 정도이고, 열차 안 혼잡도와는 다를 수 있습니다.</p>
       </section>
 
@@ -435,6 +447,7 @@ import { SUBWAY_CSV, STATION_MASTER_CSV, fetchCsv, toSubwayRows, mergeStations, 
 import { SUBWAY_LINES, DUPLICATE_STATIONS, parseStop } from "./subway-lines.mjs";
 import { lineGeometry, placeTrain } from "./train-positions.mjs";
 import { fetchAreas } from "./citydata-areas.mjs";
+import { NEARBY_RADIUS_M, nearbyAreas } from "./nearby-places.mjs";
 import { PLACE_ALERT_LEVELS, STATION_ALERT_RATIOS, activeAlerts, kstHour, newAlerts, throttleAlerts } from "./alerts.mjs";
 import { DB_DOWN_MESSAGE, dbErrorText } from "./db-status.mjs";
 
@@ -669,6 +682,7 @@ function renderLines() {
 // ---- 답 카드 ----
 const answer = document.getElementById("answer");
 const el = (sel) => answer.querySelector(sel);
+const nearbyEl = document.getElementById("nearby"); // 가까운 장소 목록(renderNearby, 도시데이터 쪽에서 채운다)
 
 // 반올림하면 0%가 되는 작은 비율은 "1% 미만"으로 쓴다.
 const pct = (r) => (r > 0 && r < 0.005 ? "1% 미만" : `${Math.round(r * 100)}%`);
@@ -1022,6 +1036,7 @@ function render() {
   renderAnswer(row, win, quiet);
   renderBand(row, quiet);
   renderChart(row, win, quiet);
+  renderNearby();
   renderTop5();
   refreshMap();
   updateStationStar();
@@ -1225,6 +1240,7 @@ async function loadCity() {
     cityStatus.textContent = `실시간 도시데이터를 불러오지 못했습니다: ${err.message}`;
   }
   showForecast();
+  renderNearby();
   checkAlerts();
 }
 // 장소 알림이 켜져 있으면 레이어를 숨기거나 탭이 뒤에 있어도 계속 받는다(알림은 그때 쓸모 있다).
@@ -1256,6 +1272,29 @@ function cityTooltip(area) {
   return head + `${k ? `${k}시간 뒤 예측` : "지금"} 혼잡도 <b>${esc(v.level)}</b> · 인구 <b>${range(v)}</b><br>`
     + (k ? "" : `<small>${esc(area.live.message)}</small><br>`)
     + `<small>${esc(v.time)} ${k ? "예측" : "기준"}</small><br><small>눌러서 최근 24시간 기록 보기</small>`;
+}
+
+// ---- 답 카드: 고른 역에서 NEARBY_RADIUS_M 안의 장소와 그 장소의 지금 혼잡도. 누르면 붐빔 기록을 연다. ----
+// render()가 맨 처음(이 아래 상태가 아직 없을 때) 불릴 때는 고른 역이 없으므로 바로 끝난다.
+let nearbyFor = null; // { station, list } — 역이 바뀔 때만 거리를 다시 잰다
+function renderNearby() {
+  const station = selected?.entry.station;
+  if (!station || !cityAreas.length) return (nearbyEl.hidden = true);
+  if (nearbyFor?.station !== station) nearbyFor = { station, list: nearbyAreas(station.position, cityAreas) };
+  nearbyEl.hidden = !nearbyFor.list.length;
+  nearbyEl.querySelector("ul").replaceChildren(...nearbyFor.list.map(({ area, distanceM }) => {
+    const v = citySnap(area, 0);
+    const where = distanceM ? `${fmt(Math.round(distanceM / 10) * 10)}m` : "역 포함";
+    const li = document.createElement("li");
+    li.innerHTML = `<button type="button"><i style="background: var(${congestCss(v?.level)})"></i>`
+      + `<span class="name">${esc(area.name)}</span><b>${esc(v ? v.level : "값 없음")}</b>`
+      + `<small>${where}${v ? ` · ${clock(v.time)}` : ""}</small></button>`;
+    const btn = li.querySelector("button");
+    btn.title = v ? `${area.name} 지금 인구 ${range(v)} · 누르면 최근 24시간 기록` : `${area.name} 실시간 값을 받지 못했습니다`;
+    btn.addEventListener("click", () => selectPlace(area));
+    return li;
+  }));
+  nearbyEl.querySelector("h3").title = `역에서 영역 경계까지 ${fmt(NEARBY_RADIUS_M)}m 안, 가까운 순`;
 }
 
 // ---- 장소별 붐빔 기록 ----
