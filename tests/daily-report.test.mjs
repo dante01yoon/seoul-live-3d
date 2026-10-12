@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { kstDate, parseClaudeResult, reportFacts, reportPrompt, upsertIndex } from "../daily-report.mjs";
+import { kstDate, parseClaudeResult, previousDate, reportDiff, reportFacts, reportPrompt, upsertIndex } from "../daily-report.mjs";
 import { toBikeStation } from "../realtime-bikes.mjs";
 
 const area = (code, level, min, max, forecast = []) => ({ code, name: `장소${code}`, now: { time: "2026-10-12 08:00", level, min, max }, forecast });
@@ -81,4 +81,77 @@ test("목록은 같은 날짜를 바꾸고 최근 날짜가 앞에 온다", () =
   index = upsertIndex(index, r("2026-10-12", "오늘"));
   index = upsertIndex(index, r("2026-10-12", null));
   assert.deepEqual(index.map((e) => [e.date, e.headline]), [["2026-10-12", null], ["2026-10-11", "어제"]]);
+});
+
+test("지난 리포트는 그 날짜보다 앞선 가장 최근 날짜", () => {
+  const index = [{ date: "2026-10-13" }, { date: "2026-10-12" }, { date: "2026-10-09" }];
+  assert.equal(previousDate(index, "2026-10-13"), "2026-10-12");
+  assert.equal(previousDate(index, "2026-10-14"), "2026-10-13");
+  assert.equal(previousDate(index, "2026-10-09"), null);
+  assert.equal(previousDate([], "2026-10-13"), null);
+});
+
+test("지난 리포트와 단계별 수·장소별 단계·따릉이 합계를 비교한다", () => {
+  const station = (id, bikes, racks, shared) => toBikeStation({ stationId: id, stationName: id, parkingBikeTotCnt: String(bikes), rackTotCnt: String(racks), shared: String(shared), stationLatitude: "37.5", stationLongitude: "127" });
+  const prevFacts = reportFacts({
+    citydata: { sample: false, areas: [area("POI001", "여유", 1, 2), area("POI002", "보통", 1, 2), area("POI003", "붐빔", 1, 2), area("POI004", "보통", 1, 2)], errors: [] },
+    bikes: { sample: false, stations: [station("A", 0, 10, 0), station("B", 5, 10, 50)] },
+    now: new Date("2026-10-11T22:00:00Z"),
+  });
+  const prev = { date: prevFacts.date, weekday: prevFacts.weekday, generatedAt: prevFacts.generatedAt, facts: prevFacts };
+  const facts = reportFacts({
+    // POI001 여유→붐빔(3단계), POI002 보통→약간 붐빔, POI003 붐빔→보통, POI004 그대로, POI005는 지난번에 없음.
+    citydata: { sample: false, areas: [area("POI001", "붐빔", 1, 2), area("POI002", "약간 붐빔", 1, 2), area("POI003", "보통", 1, 2), area("POI004", "보통", 1, 2), area("POI005", "여유", 1, 2)], errors: [] },
+    bikes: { sample: false, stations: [station("A", 3, 10, 30), station("B", 12, 10, 120), station("C", 0, 5, 0)] },
+    now: new Date("2026-10-12T22:00:00Z"),
+  });
+  const diff = reportDiff(prev, facts);
+
+  assert.deepEqual(diff.previous, { date: "2026-10-12", weekday: "월", generatedAt: "2026-10-11T22:00:00.000Z" });
+  assert.equal(diff.hours, 24);
+  assert.equal(diff.places.sampleChanged, false);
+  assert.deepEqual(diff.places.received, { prev: 4, now: 5, delta: 1 });
+  assert.deepEqual(diff.places.levels, {
+    여유: { prev: 1, now: 1, delta: 0 },
+    보통: { prev: 2, now: 2, delta: 0 },
+    "약간 붐빔": { prev: 0, now: 1, delta: 1 },
+    붐빔: { prev: 1, now: 1, delta: 0 },
+  });
+  assert.equal(diff.places.compared, 4);
+  assert.equal(diff.places.worseCount, 2);
+  assert.equal(diff.places.betterCount, 1);
+  // 많이 오른 곳 먼저.
+  assert.deepEqual(diff.places.worse, [
+    { name: "장소POI001", from: "여유", to: "붐빔" },
+    { name: "장소POI002", from: "보통", to: "약간 붐빔" },
+  ]);
+  assert.deepEqual(diff.places.better, [{ name: "장소POI003", from: "붐빔", to: "보통" }]);
+
+  assert.deepEqual(diff.bikes.stations, { prev: 2, now: 3, delta: 1 });
+  assert.deepEqual(diff.bikes.bikes, { prev: 5, now: 15, delta: 10 });
+  assert.deepEqual(diff.bikes.empty, { prev: 1, now: 1, delta: 0 });
+  assert.deepEqual(diff.bikes.full, { prev: 0, now: 1, delta: 1 });
+
+  // 프롬프트에는 장소별 단계(all)는 빼고 diff를 넣는다.
+  const prompt = reportPrompt(facts, diff);
+  assert.match(prompt, /지난 리포트\(2026-10-12 월요일, 24시간 전\)/);
+  const json = JSON.parse(prompt.slice(prompt.lastIndexOf("\n") + 1));
+  assert.equal(json.places.all, undefined);
+  assert.deepEqual(json.diff, diff);
+  assert.match(reportPrompt(facts), /changes는 빈 문자열/);
+});
+
+test("지난 리포트가 없거나, 한쪽을 받지 못했거나, 장소별 단계가 없던 리포트와 비교", () => {
+  const facts = reportFacts({ citydata: { sample: true, areas: [area("POI001", "여유", 1, 2)], errors: [] }, bikes: { error: "HTTP 500" }, now: new Date("2026-10-12T22:00:00Z") });
+  assert.equal(reportDiff(null, facts), null);
+
+  // 이 기능 전 리포트: places에 all이 없다.
+  const { all, ...oldPlaces } = reportFacts({ citydata: { sample: false, areas: [area("POI001", "보통", 1, 2)], errors: [] }, bikes: null }).places;
+  const prev = { date: "2026-10-12", weekday: "월", generatedAt: "2026-10-11T22:00:00Z", facts: { places: oldPlaces, bikes: { stations: 1 } } };
+  const diff = reportDiff(prev, facts);
+  assert.equal(diff.places.sampleChanged, true);
+  assert.equal(diff.places.worse, null);
+  assert.deepEqual(diff.places.levels.여유, { prev: 0, now: 1, delta: 1 });
+  assert.deepEqual(diff.bikes, { error: "이번 리포트에서 받지 못함" });
+  assert.deepEqual(reportDiff({ ...prev, facts: { ...prev.facts, places: { error: "x" } } }, facts).places, { error: "지난 리포트에서 받지 못함" });
 });

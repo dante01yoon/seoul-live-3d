@@ -1,5 +1,5 @@
 // 아침 서울 데이터 리포트: 실시간 도시데이터 121곳과 따릉이 대여소 현황을 받아 claude -p로 요약(JSON)을 받고
-// reports/YYYY-MM-DD.json에 저장한다(같은 날 다시 돌리면 덮어쓴다). 목록은 reports/index.json, 보기는 http://127.0.0.1:8000/reports/
+// reports/YYYY-MM-DD.json에 저장한다(같은 날 다시 돌리면 덮어쓴다). 그 날짜 전의 가장 최근 리포트와 비교한 값(diff)도 넣는다. 목록은 reports/index.json, 보기는 http://127.0.0.1:8000/reports/
 //
 //   npm run report                 받기 → 요약 → 저장
 //   npm run report -- --no-claude  요약 없이 숫자만 저장(claude를 부르지 않는다)
@@ -14,7 +14,7 @@ import { tmpdir } from "node:os";
 import { CITYDATA_AREAS_ZIP, parseAreasZip } from "../citydata-areas.mjs";
 import { areaCodesFromZip, createCitydataSource } from "../realtime-citydata.mjs";
 import { createBikeSource } from "../realtime-bikes.mjs";
-import { REPORT_SCHEMA, parseClaudeResult, reportFacts, reportPrompt, upsertIndex } from "../daily-report.mjs";
+import { REPORT_SCHEMA, parseClaudeResult, previousDate, reportDiff, reportFacts, reportPrompt, upsertIndex } from "../daily-report.mjs";
 
 const childEnv = { ...process.env };
 try {
@@ -44,6 +44,15 @@ if (facts.places.error && facts.bikes.error) {
   console.error("두 데이터를 모두 받지 못해 리포트를 만들지 않습니다.");
   process.exit(1);
 }
+
+// 지난 리포트: 목록에서 오늘보다 앞선 가장 최근 날짜. 없거나 읽지 못하면 비교 없이 만든다.
+const index = await readFile(new URL("index.json", REPORTS), "utf8").then(JSON.parse, () => []);
+const prevDate = previousDate(index, facts.date);
+const prev = prevDate
+  ? await readFile(new URL(`${prevDate}.json`, REPORTS), "utf8").then(JSON.parse, (err) => (console.warn(`지난 리포트(${prevDate})를 읽지 못했습니다: ${err.message}`), null))
+  : null;
+const diff = reportDiff(prev, facts);
+console.log(diff ? `지난 리포트와 비교: ${diff.previous.date}(${diff.hours ?? "?"}시간 전)` : "지난 리포트가 없어 비교하지 않습니다.");
 
 // 프롬프트는 stdin으로 넘긴다. 도구는 쓰지 않고(--tools ""), 이 저장소의 CLAUDE.md를 읽지 않도록 임시 폴더에서 실행한다.
 function runClaude(prompt) {
@@ -75,7 +84,7 @@ let meta = {};
 if (useClaude) {
   try {
     const started = Date.now();
-    const { summary: s, model, costUsd } = await runClaude(reportPrompt(facts));
+    const { summary: s, model, costUsd } = await runClaude(reportPrompt(facts, diff));
     summary = s;
     meta = { model, costUsd, seconds: Math.round((Date.now() - started) / 1000) };
     console.log(`요약 받음(${model ?? "모델 모름"}, ${meta.seconds}초${costUsd != null ? `, $${costUsd.toFixed(4)}` : ""})`);
@@ -93,10 +102,11 @@ async function writeJson(name, data) {
   await rename(tmp, file);
 }
 
-const report = { date: facts.date, weekday: facts.weekday, generatedAt: facts.generatedAt, ...meta, summary, summaryError, facts };
+const report = { date: facts.date, weekday: facts.weekday, generatedAt: facts.generatedAt, ...meta, summary, summaryError, facts, diff };
 await mkdir(REPORTS, { recursive: true });
 await writeJson(`${report.date}.json`, report);
-const index = await readFile(new URL("index.json", REPORTS), "utf8").then(JSON.parse, () => []);
-await writeJson("index.json", upsertIndex(index, report));
+// claude를 기다리는 동안 다른 실행이 목록을 바꿨을 수 있으니 쓰기 직전에 다시 읽는다.
+const latestIndex = await readFile(new URL("index.json", REPORTS), "utf8").then(JSON.parse, () => index);
+await writeJson("index.json", upsertIndex(latestIndex, report));
 console.log(`저장: reports/${report.date}.json`);
 if (summaryError) process.exitCode = 1;

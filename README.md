@@ -98,7 +98,7 @@
 - 호출 수·실패는 `npm run collect`가 실행마다 `collect_runs`에 남긴 기록입니다. 이 기능 전부터 켜 둔 `--watch` 수집기는 다시 시작해야 기록이 쌓입니다. 지도 화면이 쓰는 `/api/trains`·`/api/citydata` 프록시 호출은 세지 않습니다.
 
 ### 아침 서울 데이터 리포트 (`reports/`)
-- `npm run report`: 실시간 도시데이터 121곳과 따릉이 대여소 현황을 받아 숫자를 정리하고, `claude -p`(도구 없이, `--json-schema`)로 한국어 요약을 JSON으로 받아 `reports/YYYY-MM-DD.json`(KST 날짜, 같은 날 다시 돌리면 덮어씀)과 목록 `reports/index.json`에 저장합니다. 요약 없이 숫자만 저장하려면 `npm run report -- --no-claude`.
+- `npm run report`: 실시간 도시데이터 121곳과 따릉이 대여소 현황을 받아 숫자를 정리하고, `claude -p`(도구 없이, `--json-schema`)로 한국어 요약을 JSON으로 받아 `reports/YYYY-MM-DD.json`(KST 날짜, 같은 날 다시 돌리면 덮어씀)과 목록 `reports/index.json`에 저장합니다. 그 날짜 전의 가장 최근 리포트와 비교해 혼잡도 단계별 장소 수, 더 붐비게 된/한가해진 장소, 따릉이 합계가 얼마나 바뀌었는지도 함께 저장하고 보여 줍니다(이 기능 전에 만든 리포트와는 단계별 수만 비교). 요약 없이 숫자만 저장하려면 `npm run report -- --no-claude`.
 - 보기: `npm start` 후 http://127.0.0.1:8000/reports/ (날짜를 고르면 `?day=`로 바뀝니다).
 - 키는 `.env`의 `SEOUL_OPENAPI_KEY`(없으면 sample 키: 도시데이터 1곳, 따릉이 5곳). `claude`에는 `.env` 값을 넘기지 않습니다. `REPORT_MODEL`로 모델을, `CLAUDE_BIN`으로 `claude` 경로를 바꿀 수 있습니다.
 - 매일 아침 돌리기(예: 7시, `crontab -e`). cron은 PATH가 짧으므로 `node`·`claude`를 절대 경로로 적습니다(`which node`, `which claude`). Mac이 잠들어 있으면 그 시각은 건너뜁니다.
