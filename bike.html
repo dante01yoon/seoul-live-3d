@@ -34,6 +34,11 @@
          padding-bottom: 16px; border-bottom: 1px solid var(--grid); }
   .top h1 { margin: 0; font-size: 22px; }
   .top .sub { color: var(--text-secondary); font-size: 15px; margin-left: 12px; }
+  .days { display: inline-flex; gap: 6px; margin-left: 12px; vertical-align: middle; }
+  .days button { min-height: 44px; padding: 0 14px; border: 1px solid var(--border); border-radius: 999px;
+                 background: transparent; color: var(--text-secondary); cursor: pointer; }
+  .days button[aria-pressed="true"] { background: var(--answer); border-color: var(--answer); color: var(--answer-ink); font-weight: 700; }
+  .days button:disabled { cursor: progress; }
   .badges { display: flex; flex-wrap: wrap; gap: 8px; font-size: 13px; color: var(--text-secondary); }
   .badges > span { padding: 6px 10px; border: 1px solid var(--border); border-radius: 999px; }
   .badges b { font-variant-numeric: tabular-nums; color: var(--text-primary); }
@@ -83,6 +88,8 @@
   @media (max-width: 600px) {
     body { margin: 16px; }
     .top .sub { display: block; margin: 4px 0 0; }
+    .days { display: flex; margin: 8px 0 0; }
+    .days button { flex: 1 1 0; }
     /* 좁은 화면에서는 범례가 지도를 가리지 않게 지도 아래로 내린다. */
     .scene { height: auto; display: flex; flex-direction: column; }
     .scene-map { position: relative; height: 52vh; }
@@ -98,7 +105,8 @@
   <header class="top">
     <div>
       <h1 style="display: inline">서울 라이브 3D</h1>
-      <span class="sub">따릉이 · 2026년 6월 13일(토) 하루 이동</span>
+      <span class="sub" id="day-title">따릉이 · 2026년 하루 이동</span>
+      <span class="days" id="days" role="group" aria-label="날짜 고르기"></span>
     </div>
     <div class="badges" id="summary" aria-live="polite"><span class="muted">요약을 불러오는 중…</span></div>
   </header>
@@ -144,16 +152,16 @@
   </section>
 
   <footer class="foot">
-    <p>대여 기준으로 고른 기록이라 6월 12일에 빌려 13일에 반납한 이용은 없고, 24:00을 넘겨 반납한 이용(<span id="over-day"></span>건)은 24:00까지만 그리고 재생은 24:00에서 끝납니다.<br>
+    <p>대여 기준으로 고른 기록이라 <span id="prev-day"></span>에 빌려 <span id="this-day"></span>에 반납한 이용은 없고, 24:00을 넘겨 반납한 이용(<span id="over-day"></span>건)은 24:00까지만 그리고 재생은 24:00에서 끝납니다.<br>
        이동선은 대여소에서 반납소까지의 직선이며 실제 경로가 아닙니다. 꼬리는 지나온 40분을 보여 주고, 겹칠수록 밝아집니다. 지도 배경(도로·강)은 쓰지 않았습니다.</p>
-    <p>데이터: 서울특별시 공공자전거 대여이력 정보(2026년 6월 13일), 공공자전거 대여소 정보(2026년 6월 기준) — 서울특별시, 공공누리 제1유형(출처 표시)</p>
+    <p>데이터: 서울특별시 공공자전거 대여이력 정보(2026년 6월 10일·13일), 공공자전거 대여소 정보(2026년 6월 기준) — 서울특별시, 공공누리 제1유형(출처 표시)</p>
   </footer>
 </div>
 
 <!-- deck.gl 단일 번들. 전역 deck(Deck, TripsLayer, ScatterplotLayer …)을 만든다. 배경 지도 타일은 쓰지 않는다. -->
 <script src="https://cdn.jsdelivr.net/npm/deck.gl@9.0.38/dist.min.js"></script>
 <script type="module">
-import { loadBikeTrips, hourlyStarts } from "./bike-trips.mjs";
+import { BIKE_DAY, BIKE_DAYS, loadBikeTrips, hourlyStarts } from "./bike-trips.mjs";
 
 const fmt = (n) => Math.round(n).toLocaleString("ko-KR");
 const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -181,16 +189,32 @@ const ADDITIVE = {
 const STAY_FILL = [...cssRgb("--stay"), 70], STAY_LINE = [...cssRgb("--stay"), 255];
 const STATION_FILL = [...cssRgb("--station"), 150];
 
-loadBikeTrips().then(({ trips, skipped, total, coords }) => {
-  // 요약: 데이터 품질(버린 행)을 숨기지 않는다.
-  const skippedEntries = Object.entries(skipped ?? {});
-  const skippedSum = skippedEntries.reduce((a, [, n]) => a + n, 0);
-  $("summary").innerHTML =
-    `<span>전체 <b>${fmt(total)}</b>행</span><span>지도에 그린 <b>${fmt(trips.length)}</b>건</span>` +
-    `<span>버린 <b>${fmt(skippedSum)}</b>행${skippedEntries.length ? " (" + skippedEntries.map(([k, n]) => `${SKIP_LABELS[k] ?? k} ${fmt(n)}`).join(" · ") + ")" : ""}</span>`;
+// 날짜: 주소의 ?day=2026-06-10으로 고를 수 있고, 바꾸면 주소도 바꾼다(새로 고쳐도 같은 날).
+const dayInfo = (day) => BIKE_DAYS.find((d) => d.day === day);
+const monthDay = (day, offset = 0) => {
+  const d = new Date(`${day}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + offset);
+  return `${d.getUTCMonth() + 1}월 ${d.getUTCDate()}일`;
+};
+let day = dayInfo(new URLSearchParams(location.search).get("day"))?.day ?? BIKE_DAY;
+const dayBtns = BIKE_DAYS.map((d) => {
+  const b = document.createElement("button");
+  b.type = "button";
+  b.textContent = d.label;
+  b.addEventListener("click", () => selectDay(d.day));
+  $("days").append(b);
+  return b;
+});
 
-  // 경로·타임스탬프는 한 번만 만든다. 재생 중에는 currentTime만 바뀐다.
-  $("over-day").textContent = fmt(trips.filter((t) => t.end >= DAY_S).length);
+// 날짜마다 한 번만 받아 둔다. 좌표 JSON은 같은 파일이라 브라우저 캐시가 다시 받지 않는다.
+const loaded = new Map();
+const fetchDay = (d) => {
+  if (!loaded.has(d)) loaded.set(d, loadBikeTrips("", d).then(prepare).catch((err) => { loaded.delete(d); throw err; }));
+  return loaded.get(d);
+};
+
+// 이동 목록 → 그리기용 데이터. 경로·타임스탬프는 날짜마다 한 번만 만든다. 재생 중에는 currentTime만 바뀐다.
+function prepare({ trips, skipped, total, coords }) {
   const moves = trips.filter((t) => !t.round);
   const stays = trips.filter((t) => t.round);
   const endOf = (t) => Math.max(t.end, t.start + 30); // 끝이 시작보다 빠르거나 같은 기록도 보이게
@@ -230,113 +254,168 @@ loadBikeTrips().then(({ trips, skipped, total, coords }) => {
   }
   for (let i = 1; i < movingAt.length; i++) { movingAt[i] += movingAt[i - 1]; stayingAt[i] += stayingAt[i - 1]; }
 
-  const stations = Object.values(coords).map((c) => [c.lng, c.lat]);
-
-  const layers = (time) => [
-    new deck.ScatterplotLayer({
-      id: "stations", data: stations, getPosition: (d) => d, getFillColor: STATION_FILL,
-      radiusUnits: "pixels", getRadius: 1.6, billboard: true, parameters: { depthCompare: "always" },
-    }),
-    // 같은 이동을 두 번 그린다: 넓고 흐린 번짐 위에 가늘고 밝은 심.
-    new deck.TripsLayer({
-      id: "trips-glow", data: tripData, getColor: GLOW_COLOR, widthUnits: "pixels", getWidth: 6,
-      trailLength: TRAIL_S, currentTime: time, fadeTrail: true, capRounded: true, parameters: ADDITIVE,
-    }),
-    new deck.TripsLayer({
-      id: "trips", data: tripData, getColor: TRIP_COLOR, widthUnits: "pixels", getWidth: 1.4,
-      trailLength: TRAIL_S, currentTime: time, fadeTrail: true, capRounded: true, parameters: ADDITIVE,
-    }),
-    new deck.ScatterplotLayer({
-      id: "stays", data: activeStays(time), getPosition: (d) => d.position, getFillColor: STAY_FILL, stroked: true, getLineColor: STAY_LINE,
-      lineWidthUnits: "pixels", getLineWidth: 1.2, radiusUnits: "pixels", getRadius: 5, billboard: true, parameters: { depthCompare: "always" },
-    }),
-  ];
-
-  let time = reduceMotion ? 7 * 3600 : 0;
-  const deckgl = new deck.Deck({
-    parent: $("map"),
-    // 비스듬히 내려다보는 3D 시점. 기울이면 먼 쪽이 작아지므로 중심을 조금 남쪽으로 둔다.
-    initialViewState: { longitude: 126.99, latitude: 37.53, zoom: matchMedia("(max-width: 600px)").matches ? 9.5 : 10.8, pitch: 55, bearing: -20, maxPitch: 75 },
-    controller: { dragRotate: true, touchRotate: true },
-    layers: layers(time),
-    getCursor: ({ isDragging }) => (isDragging ? "grabbing" : "grab"),
-  });
-
-  // 시별 대여 시작 막대 그래프
-  const hours = hourlyStarts(trips);
-  const hMax = Math.max(...hours, 1);
-  const TOP = 16, BASE = 100, H = 120;
-  const svg = $("hist");
-  let BW = 12, bars = [], nowline = null;
-  // 칸의 실제 폭에 맞춰 그려서 글자가 늘어나지 않게 한다.
-  function drawHist() {
-    const W = svg.clientWidth || 288;
-    BW = W / 24;
-    svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
-    svg.innerHTML =
-      hours.map((n, h) => {
-        const bh = (n / hMax) * (BASE - TOP);
-        return `<rect class="bar" data-h="${h}" x="${h * BW + 1}" y="${BASE - bh}" width="${BW - 2}" height="${bh}"><title>${h}시 대여 시작 ${fmt(n)}건</title></rect>`;
-      }).join("") +
-      [0, 6, 12, 18].map((h) => `<text class="axis" x="${h * BW + (h ? BW / 2 : 0)}" y="114"${h ? "" : ' style="text-anchor: start"'}>${h}시</text>`).join("") +
-      `<text class="val" x="${Math.min(W - 20, Math.max(20, hours.indexOf(hMax) * BW + BW / 2))}" y="${TOP - 4}">${fmt(hMax)}</text>` +
-      `<line class="nowline" id="nowline" x1="0" x2="0" y1="${TOP - 2}" y2="${BASE}"></line>`;
-    bars = [...svg.querySelectorAll(".bar")];
-    nowline = $("nowline");
-    if (typeof render === "function") render();
-  }
-  drawHist();
-  new ResizeObserver(() => { if (Math.abs((svg.clientWidth || 0) - BW * 24) > 1) drawHist(); }).observe(svg);
-
-  function render() {
-    const s = Math.min(DAY_S, Math.floor(time));
-    $("clock").textContent = hhmm(time);
-    $("moving").textContent = fmt(movingAt[s]);
-    $("staying").textContent = fmt(stayingAt[s]);
-    slider.value = String(Math.round(time));
-    const x = (time / 3600) * BW;
-    nowline.setAttribute("x1", x); nowline.setAttribute("x2", x);
-    const cur = Math.min(23, Math.floor(time / 3600));
-    bars.forEach((b, h) => b.classList.toggle("on", h === cur));
-    deckgl.setProps({ layers: layers(time) });
-  }
-
-  let playing = false, last = 0, raf = 0;
-  const frame = (now) => {
-    time = Math.min(DAY_S, time + ((now - last) / 1000) * Number(speedSel.value));
-    last = now;
-    render();
-    if (time >= DAY_S) return setPlaying(false);
-    raf = requestAnimationFrame(frame);
+  return {
+    trips, skipped, total, tripData, activeStays, movingAt, stayingAt,
+    overDay: trips.filter((t) => t.end >= DAY_S).length,
+    hours: hourlyStarts(trips),
+    stations: Object.values(coords).map((c) => [c.lng, c.lat]),
   };
-  function setPlaying(on) {
-    playing = on;
-    playBtn.textContent = on ? "정지" : "재생";
-    playBtn.setAttribute("aria-label", on ? "정지" : "재생");
-    cancelAnimationFrame(raf);
-    if (on) {
-      if (time >= DAY_S) time = 0; // 끝에서 다시 누르면 처음부터
-      last = performance.now();
-      raf = requestAnimationFrame(frame);
-    }
-  }
-  playBtn.addEventListener("click", () => setPlaying(!playing));
-  slider.addEventListener("input", () => { time = Number(slider.value); render(); });
-  svg.addEventListener("click", (e) => {
-    const r = svg.getBoundingClientRect();
-    const h = Math.max(0, Math.min(23, Math.floor(((e.clientX - r.left) / r.width) * 24)));
-    time = h * 3600; render();
-  });
+}
 
-  playBtn.disabled = false; slider.disabled = false;
-  statusEl.textContent = "";
-  render();
-  if (!reduceMotion) setPlaying(true);
-}).catch((err) => {
-  console.error(err);
-  statusEl.textContent = `데이터를 불러오지 못했습니다: ${err.message}`;
-  $("summary").innerHTML = `<span class="muted">요약 없음</span>`;
+let D = null; // 지금 날짜의 그리기용 데이터(prepare 결과)
+let time = reduceMotion ? 7 * 3600 : 0;
+
+const layers = (time) => [
+  new deck.ScatterplotLayer({
+    id: "stations", data: D.stations, getPosition: (d) => d, getFillColor: STATION_FILL,
+    radiusUnits: "pixels", getRadius: 1.6, billboard: true, parameters: { depthCompare: "always" },
+  }),
+  // 같은 이동을 두 번 그린다: 넓고 흐린 번짐 위에 가늘고 밝은 심.
+  new deck.TripsLayer({
+    id: "trips-glow", data: D.tripData, getColor: GLOW_COLOR, widthUnits: "pixels", getWidth: 6,
+    trailLength: TRAIL_S, currentTime: time, fadeTrail: true, capRounded: true, parameters: ADDITIVE,
+  }),
+  new deck.TripsLayer({
+    id: "trips", data: D.tripData, getColor: TRIP_COLOR, widthUnits: "pixels", getWidth: 1.4,
+    trailLength: TRAIL_S, currentTime: time, fadeTrail: true, capRounded: true, parameters: ADDITIVE,
+  }),
+  new deck.ScatterplotLayer({
+    id: "stays", data: D.activeStays(time), getPosition: (d) => d.position, getFillColor: STAY_FILL, stroked: true, getLineColor: STAY_LINE,
+    lineWidthUnits: "pixels", getLineWidth: 1.2, radiusUnits: "pixels", getRadius: 5, billboard: true, parameters: { depthCompare: "always" },
+  }),
+];
+
+let deckgl = null;
+const makeDeck = () => new deck.Deck({
+  parent: $("map"),
+  // 비스듬히 내려다보는 3D 시점. 기울이면 먼 쪽이 작아지므로 중심을 조금 남쪽으로 둔다.
+  initialViewState: { longitude: 126.99, latitude: 37.53, zoom: matchMedia("(max-width: 600px)").matches ? 9.5 : 10.8, pitch: 55, bearing: -20, maxPitch: 75 },
+  controller: { dragRotate: true, touchRotate: true },
+  layers: layers(time),
+  getCursor: ({ isDragging }) => (isDragging ? "grabbing" : "grab"),
 });
+
+// 시별 대여 시작 막대 그래프
+const TOP = 16, BASE = 100, H = 120;
+const svg = $("hist");
+let BW = 12, bars = [], nowline = null;
+// 칸의 실제 폭에 맞춰 그려서 글자가 늘어나지 않게 한다.
+function drawHist() {
+  if (!D) return;
+  const { hours } = D;
+  const hMax = Math.max(...hours, 1);
+  const W = svg.clientWidth || 288;
+  BW = W / 24;
+  svg.setAttribute("viewBox", `0 0 ${W} ${H}`);
+  svg.innerHTML =
+    hours.map((n, h) => {
+      const bh = (n / hMax) * (BASE - TOP);
+      return `<rect class="bar" data-h="${h}" x="${h * BW + 1}" y="${BASE - bh}" width="${BW - 2}" height="${bh}"><title>${h}시 대여 시작 ${fmt(n)}건</title></rect>`;
+    }).join("") +
+    [0, 6, 12, 18].map((h) => `<text class="axis" x="${h * BW + (h ? BW / 2 : 0)}" y="114"${h ? "" : ' style="text-anchor: start"'}>${h}시</text>`).join("") +
+    `<text class="val" x="${Math.min(W - 20, Math.max(20, hours.indexOf(hMax) * BW + BW / 2))}" y="${TOP - 4}">${fmt(hMax)}</text>` +
+    `<line class="nowline" id="nowline" x1="0" x2="0" y1="${TOP - 2}" y2="${BASE}"></line>`;
+  bars = [...svg.querySelectorAll(".bar")];
+  nowline = $("nowline");
+  render();
+}
+new ResizeObserver(() => { if (Math.abs((svg.clientWidth || 0) - BW * 24) > 1) drawHist(); }).observe(svg);
+
+function render() {
+  if (!D || !deckgl) return;
+  const s = Math.min(DAY_S, Math.floor(time));
+  $("clock").textContent = hhmm(time);
+  $("moving").textContent = fmt(D.movingAt[s]);
+  $("staying").textContent = fmt(D.stayingAt[s]);
+  slider.value = String(Math.round(time));
+  const x = (time / 3600) * BW;
+  nowline.setAttribute("x1", x); nowline.setAttribute("x2", x);
+  const cur = Math.min(23, Math.floor(time / 3600));
+  bars.forEach((b, h) => b.classList.toggle("on", h === cur));
+  deckgl.setProps({ layers: layers(time) });
+}
+
+// 요약·제목·각주를 그날 값으로. 데이터 품질(버린 행)을 숨기지 않는다.
+function showDayText() {
+  const info = dayInfo(day);
+  const skippedEntries = Object.entries(D.skipped ?? {});
+  const skippedSum = skippedEntries.reduce((a, [, n]) => a + n, 0);
+  $("summary").innerHTML =
+    `<span>전체 <b>${fmt(D.total)}</b>행</span><span>지도에 그린 <b>${fmt(D.trips.length)}</b>건</span>` +
+    `<span>버린 <b>${fmt(skippedSum)}</b>행${skippedEntries.length ? " (" + skippedEntries.map(([k, n]) => `${SKIP_LABELS[k] ?? k} ${fmt(n)}`).join(" · ") + ")" : ""}</span>`;
+  $("day-title").textContent = `따릉이 · 2026년 ${info.label} 하루 이동`;
+  document.title = `서울 라이브 3D · 따릉이 ${info.label} 하루 이동`;
+  $("prev-day").textContent = monthDay(day, -1);
+  $("this-day").textContent = monthDay(day).split(" ")[1];
+  $("over-day").textContent = fmt(D.overDay);
+}
+
+const markDay = () => dayBtns.forEach((b, i) => b.setAttribute("aria-pressed", String(BIKE_DAYS[i].day === day)));
+markDay();
+
+// 날짜를 바꿔도 시각·재생 상태·시점은 그대로 두어 같은 시각을 두 날짜로 견줄 수 있게 한다.
+let wanted = day;
+async function selectDay(next) {
+  wanted = next;
+  if (!loaded.has(next)) statusEl.textContent = `${dayInfo(next).label} 기록을 불러오는 중…`;
+  dayBtns.forEach((b) => (b.disabled = true));
+  try {
+    const data = await fetchDay(next);
+    if (wanted !== next) return; // 그사이 다른 날짜를 눌렀다
+    D = data;
+    day = next;
+    const url = new URL(location.href);
+    if (day === BIKE_DAY) url.searchParams.delete("day"); else url.searchParams.set("day", day);
+    history.replaceState(null, "", url);
+    markDay();
+    showDayText();
+    statusEl.textContent = "";
+    // 처음 성공한 날짜에서 지도를 만들고 컨트롤을 켠다.
+    const first = !deckgl;
+    if (first) deckgl = makeDeck();
+    drawHist();
+    if (first) {
+      playBtn.disabled = false; slider.disabled = false;
+      if (!reduceMotion) setPlaying(true);
+    }
+  } catch (err) {
+    console.error(err);
+    if (wanted !== next) return;
+    statusEl.textContent = `데이터를 불러오지 못했습니다: ${err.message}`;
+    if (!D) $("summary").innerHTML = `<span class="muted">요약 없음</span>`;
+  } finally {
+    if (wanted === next) dayBtns.forEach((b) => (b.disabled = false));
+  }
+}
+
+let playing = false, last = 0, raf = 0;
+const frame = (now) => {
+  time = Math.min(DAY_S, time + ((now - last) / 1000) * Number(speedSel.value));
+  last = now;
+  render();
+  if (time >= DAY_S) return setPlaying(false);
+  raf = requestAnimationFrame(frame);
+};
+function setPlaying(on) {
+  playing = on;
+  playBtn.textContent = on ? "정지" : "재생";
+  playBtn.setAttribute("aria-label", on ? "정지" : "재생");
+  cancelAnimationFrame(raf);
+  if (on) {
+    if (time >= DAY_S) time = 0; // 끝에서 다시 누르면 처음부터
+    last = performance.now();
+    raf = requestAnimationFrame(frame);
+  }
+}
+playBtn.addEventListener("click", () => setPlaying(!playing));
+slider.addEventListener("input", () => { time = Number(slider.value); render(); });
+svg.addEventListener("click", (e) => {
+  const r = svg.getBoundingClientRect();
+  const h = Math.max(0, Math.min(23, Math.floor(((e.clientX - r.left) / r.width) * 24)));
+  time = h * 3600; render();
+});
+
+selectDay(day);
 </script>
 </body>
 </html>
