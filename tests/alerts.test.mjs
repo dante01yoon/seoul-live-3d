@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { PLACE_ALERT_LEVELS, STATION_ALERT_RATIOS, activeAlerts, kstHour, newAlerts, placeAlert, stationAlert } from "../alerts.mjs";
+import { PLACE_ALERT_COOLDOWN_MS, PLACE_ALERT_LEVELS, STATION_ALERT_RATIOS, activeAlerts, kstHour, newAlerts, placeAlert, stationAlert, throttleAlerts } from "../alerts.mjs";
 import { HOURS } from "../stats.mjs";
 
 const area = (level, name = "강남역") => ({ name, live: { now: { time: "2026-10-12 18:05", level, min: 30000, max: 32000 } } });
@@ -58,4 +58,23 @@ test("지금 울릴 알림을 모으고, 새로 붐비게 된 것만 새 알림�
   assert.deepEqual(alerts.map((a) => a.key), ["place:POI014", "station:가산디지털단지"]);
   assert.deepEqual(newAlerts(null, alerts), [], "처음 확인은 기준점만 잡는다");
   assert.deepEqual(newAlerts(new Set(["place:POI014"]), alerts).map((a) => a.key), ["station:가산디지털단지"]);
+});
+
+test("같은 장소는 한 번 울린 뒤 쉬는 시간 동안 다시 울리지 않는다", () => {
+  const min = 60 * 1000;
+  const gangnam = placeAlert(fav("약간 붐빔"), area("붐빔"));
+  const station = { key: "station:가산디지털단지", kind: "station" };
+  assert.equal(PLACE_ALERT_COOLDOWN_MS, 60 * min);
+  const t0 = Date.parse("2026-10-12T09:00:00Z");
+  const sentAt = new Map();
+  assert.deepEqual(throttleAlerts([gangnam], sentAt, t0), [gangnam], "처음 울리는 장소는 그대로");
+  sentAt.set(gangnam.key, t0);
+  // 기준 언저리에서 오르내려 5분 뒤 다시 "새로 붐빔"이 되어도 울리지 않는다.
+  assert.deepEqual(throttleAlerts([gangnam], sentAt, t0 + 5 * min), []);
+  assert.deepEqual(throttleAlerts([gangnam], sentAt, t0 + 59 * min), []);
+  assert.deepEqual(throttleAlerts([gangnam], sentAt, t0 + 60 * min), [gangnam], "쉬는 시간이 지나면 다시 울린다");
+  // 다른 장소와 역 알림은 막지 않는다.
+  const other = placeAlert(fav("보통", "POI009"), area("붐빔", "광화문·덕수궁"));
+  sentAt.set(station.key, t0);
+  assert.deepEqual(throttleAlerts([other, station], sentAt, t0 + 5 * min), [other, station]);
 });

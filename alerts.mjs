@@ -40,3 +40,10 @@ export function activeAlerts({ places = [], stations = [], areaOf, rowOf, hour }
 
 // 지난번에 없던 알림만(붐비지 않다가 붐비게 된 것). prevKeys가 null이면 처음 확인이라 아무것도 새로 울리지 않는다.
 export const newAlerts = (prevKeys, alerts) => (prevKeys ? alerts.filter((a) => !prevKeys.has(a.key)) : []);
+
+// 같은 장소 알림을 다시 울리기까지 쉬는 시간. 혼잡도가 기준 언저리에서 오르내리면 5분마다 "새로 붐빔"이 되기 때문이다.
+export const PLACE_ALERT_COOLDOWN_MS = 60 * 60 * 1000;
+
+// 쉬는 시간 안에 이미 울린 장소 알림을 뺀다. sentAt은 key → 마지막으로 울린 시각(ms). 역 알림은 시간대 단위라 그대로 둔다.
+export const throttleAlerts = (alerts, sentAt, now, cooldownMs = PLACE_ALERT_COOLDOWN_MS) =>
+  alerts.filter((a) => a.kind !== "place" || !(now - (sentAt.get(a.key) ?? -Infinity) < cooldownMs));

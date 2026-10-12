@@ -433,7 +433,7 @@ import { SUBWAY_CSV, STATION_MASTER_CSV, fetchCsv, toSubwayRows, mergeStations, 
 import { SUBWAY_LINES, DUPLICATE_STATIONS, parseStop } from "./subway-lines.mjs";
 import { lineGeometry, placeTrain } from "./train-positions.mjs";
 import { fetchAreas } from "./citydata-areas.mjs";
-import { PLACE_ALERT_LEVELS, STATION_ALERT_RATIOS, activeAlerts, kstHour, newAlerts } from "./alerts.mjs";
+import { PLACE_ALERT_LEVELS, STATION_ALERT_RATIOS, activeAlerts, kstHour, newAlerts, throttleAlerts } from "./alerts.mjs";
 
 const pad = (h) => String(h).padStart(2, "0");
 const hourLabel = (h) => `${pad(h)}시대`;
@@ -776,6 +776,7 @@ let sb = null;     // Supabase 클라이언트
 let user = null;
 let favs = { places: [], stations: [] }; // places: { place_code, notify_level, name }, stations: { station_name, notify_ratio }
 let alertKeys = null; // 지난 확인에서 울리던 알림 key. null이면 아직 기준점을 잡지 않았다
+const alertSentAt = new Map(); // 알림 key → 마지막으로 울린 시각(ms). 같은 장소를 자꾸 울리지 않게 한다
 let alertTimer = null;
 
 const placeAlertsOn = () => Boolean(user && favs.places.some((f) => f.notify_level));
@@ -811,6 +812,7 @@ async function setUser(next) {
   user = next;
   favs = { places: [], stations: [] };
   alertKeys = null;
+  alertSentAt.clear();
   clearInterval(alertTimer);
   if (!user) {
     showAuth("email");
@@ -984,12 +986,14 @@ function checkAlerts({ quiet = false } = {}) {
   // 데이터가 다 들어오기 전에는 기준점을 잡지 않는다(들어오는 순간 전부 "새로 붐빔"이 되지 않게).
   const ready = entries.length && (!placeAlertsOn() || cityLoaded);
   if (ready) {
-    const fresh = newAlerts(quiet ? null : alertKeys, active);
+    const now = Date.now();
+    const fresh = throttleAlerts(newAlerts(quiet ? null : alertKeys, active), alertSentAt, now);
     alertKeys = new Set(active.map((a) => a.key));
     if ("Notification" in window && Notification.permission === "granted") {
       for (const a of fresh) {
         const { title, body } = alertText(a);
         new Notification(`서울 라이브 3D · ${title}`, { body, tag: a.key });
+        alertSentAt.set(a.key, now);
       }
     }
   }
