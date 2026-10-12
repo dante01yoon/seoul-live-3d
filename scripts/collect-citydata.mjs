@@ -6,11 +6,12 @@
 // .env(또는 환경 변수): SEOUL_OPENAPI_KEY(없으면 sample 키, 광화문·덕수궁 1곳),
 //   SUPABASE_URL(로컬은 http://127.0.0.1:54421), SUPABASE_SERVICE_ROLE_KEY(`npx supabase status`의 Secret 키).
 // 시작할 때 영역 zip의 121장소를 places에 맞춰 넣는다(crowd_snapshots가 places를 참조하므로).
+// 실행마다 API 호출 수·실패·새 기록 수를 collect_runs에 한 행씩 남긴다(관리자 화면 admin.html이 읽는다).
 
 import { readFile } from "node:fs/promises";
 import { CITYDATA_AREAS_ZIP, parseAreasZip } from "../citydata-areas.mjs";
-import { CITYDATA_CACHE_MS, createCitydataSource } from "../realtime-citydata.mjs";
-import { createCrowdStore, toSnapshotRows } from "../citydata-store.mjs";
+import { CITYDATA_CACHE_MS, areaCodesFromZip, createCitydataSource } from "../realtime-citydata.mjs";
+import { createCrowdStore, toRunRow, toSnapshotRows } from "../citydata-store.mjs";
 
 try {
   process.loadEnvFile(new URL("../.env", import.meta.url));
@@ -19,7 +20,8 @@ try {
 }
 
 const watch = process.argv.includes("--watch");
-const city = createCitydataSource(process.env.SEOUL_OPENAPI_KEY);
+// 캐시 없이(0) 매번 새로 묻는다. 간격은 아래 setInterval이 맞춘다.
+const city = createCitydataSource(process.env.SEOUL_OPENAPI_KEY, areaCodesFromZip, 0);
 if (city.isSample) console.warn("SEOUL_OPENAPI_KEY가 없어 공개 sample 키를 씁니다. 광화문·덕수궁 1곳만 쌓입니다.");
 const store = createCrowdStore({ url: process.env.SUPABASE_URL, serviceKey: process.env.SUPABASE_SERVICE_ROLE_KEY });
 
@@ -27,16 +29,30 @@ const areas = await parseAreasZip(await readFile(new URL(`../${CITYDATA_AREAS_ZI
 await store.savePlaces(areas);
 console.log(`장소 ${areas.length}곳을 places에 맞춤`);
 
+// 실행 기록을 남기지 못해도 수집은 멈추지 않는다(마이그레이션 전이면 collect_runs가 없다).
+async function saveRun(run) {
+  await store.saveRun(toRunRow({ ...run, sample: city.isSample, finishedAt: Date.now() }))
+    .catch((err) => console.warn(`실행 기록(collect_runs) 저장 실패: ${city.scrub(err.message)}`));
+}
+
 async function collectOnce() {
-  const data = await city.citydata();
-  const { rows, skipped } = toSnapshotRows(data.areas);
-  const inserted = await store.saveSnapshots(rows);
-  const parts = [`받음 ${data.areas.length}곳`, `새 기록 ${inserted}행`, `이미 있음 ${rows.length - inserted}행`];
-  if (skipped.length) parts.push(`건너뜀 ${skipped.length}곳`);
-  if (data.errors.length) parts.push(`API 오류 ${data.errors.length}곳`);
-  console.log(`[${new Date().toISOString()}] ${parts.join(", ")}`);
-  if (skipped.length) console.warn("건너뛴 장소", skipped.slice(0, 5));
-  return data.areas.length > 0;
+  const startedAt = Date.now();
+  let data = null;
+  try {
+    data = await city.citydata();
+    const { rows, skipped } = toSnapshotRows(data.areas);
+    const inserted = await store.saveSnapshots(rows);
+    const parts = [`받음 ${data.areas.length}곳`, `새 기록 ${inserted}행`, `이미 있음 ${rows.length - inserted}행`];
+    if (skipped.length) parts.push(`건너뜀 ${skipped.length}곳`);
+    if (data.errors.length) parts.push(`API 오류 ${data.errors.length}곳`);
+    console.log(`[${new Date().toISOString()}] ${parts.join(", ")}`);
+    if (skipped.length) console.warn("건너뛴 장소", skipped.slice(0, 5));
+    await saveRun({ startedAt, data, inserted, skipped: skipped.length });
+    return data.areas.length > 0;
+  } catch (err) {
+    await saveRun({ startedAt, data, error: city.scrub(err.message) });
+    throw err;
+  }
 }
 
 if (!watch) {

@@ -33,8 +33,10 @@ export async function areaCodesFromZip(path) {
 }
 
 // key가 없으면 공개 sample 키를 쓴다. sample 키는 어느 장소를 물어도 광화문·덕수궁 1곳만 돌려주므로 한 번만 묻는다.
+// cacheMs: 이 간격 안의 요청은 지난 결과를 돌려준다. 5분마다 도는 수집기는 0을 넘겨 매번 새로 묻는다
+// (같은 간격이면 타이머가 조금만 일찍 와도 캐시에 걸려 한 번을 건너뛴다).
 // 반환값: { isSample, citydata(), scrub(s) }
-export function createCitydataSource(key, loadCodes = areaCodesFromZip) {
+export function createCitydataSource(key, loadCodes = areaCodesFromZip, cacheMs = CITYDATA_CACHE_MS) {
   const KEY = key || "sample";
   const isSample = KEY === "sample";
   const scrub = (s) => String(s).replaceAll(KEY, "***").replaceAll(encodeURIComponent(KEY), "***");
@@ -55,7 +57,7 @@ export function createCitydataSource(key, loadCodes = areaCodesFromZip) {
   let codes = null;
   let cache = null; // { at, promise }
   function citydata() {
-    if (cache && Date.now() - cache.at < CITYDATA_CACHE_MS) return cache.promise;
+    if (cache && Date.now() - cache.at < cacheMs) return cache.promise;
     const promise = (async () => {
       codes ??= await loadCodes();
       const ask = isSample ? codes.slice(0, 1) : codes;

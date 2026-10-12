@@ -30,26 +30,44 @@ export function toSnapshotRows(areas) {
   return { rows, skipped };
 }
 
-// 반환값: { savePlaces(areas), saveSnapshots(rows) }. saveSnapshots는 새로 들어간 행 수를 돌려준다.
+// 수집 한 번 → collect_runs 행(관리자 화면이 호출 수·실패를 센다). data는 citydata() 결과, 실행 전체가 실패했으면 null과 error.
+// api_errors는 자주 나는 오류를 보기 위한 표본이라 앞쪽 몇 곳만 남긴다.
+export const RUN_ERROR_SAMPLES = 10;
+export function toRunRow({ startedAt, finishedAt, sample, data = null, inserted = 0, skipped = 0, error = null }) {
+  const errors = data?.errors ?? [];
+  return {
+    started_at: new Date(startedAt).toISOString(),
+    finished_at: new Date(finishedAt).toISOString(),
+    sample: Boolean(sample),
+    api_calls: data ? data.areas.length + errors.length : 0,
+    api_failed: errors.length,
+    inserted,
+    skipped,
+    error: error === null ? null : String(error).slice(0, 500),
+    api_errors: errors.slice(0, RUN_ERROR_SAMPLES).map(({ code, message }) => ({ code, message: String(message).slice(0, 200) })),
+  };
+}
+
+// 반환값: { savePlaces(areas), saveSnapshots(rows), saveRun(row) }. saveSnapshots는 새로 들어간 행 수를 돌려준다.
 export function createCrowdStore({ url, serviceKey }) {
   if (!url || !serviceKey) throw new Error("SUPABASE_URL과 SUPABASE_SERVICE_ROLE_KEY가 필요합니다");
   const base = `${url.replace(/\/+$/, "")}/rest/v1`;
 
-  async function upsert(table, onConflict, resolution, rows) {
-    if (!rows.length) return 0;
-    const res = await fetch(`${base}/${table}?on_conflict=${onConflict}&select=${onConflict.split(",")[0]}`, {
+  async function post(table, query, prefer, rows) {
+    const res = await fetch(`${base}/${table}${query}`, {
       method: "POST",
-      headers: {
-        apikey: serviceKey,
-        Authorization: `Bearer ${serviceKey}`,
-        "Content-Type": "application/json",
-        // return=representation: 실제로 들어간 행만 돌아온다(ignore-duplicates면 이미 있던 행은 빠진다).
-        Prefer: `resolution=${resolution},return=representation`,
-      },
+      headers: { apikey: serviceKey, Authorization: `Bearer ${serviceKey}`, "Content-Type": "application/json", Prefer: prefer },
       body: JSON.stringify(rows),
       signal: AbortSignal.timeout(15_000),
     });
     if (!res.ok) throw new Error(`${table} 저장 실패 HTTP ${res.status} ${(await res.text()).slice(0, 300)}`);
+    return res;
+  }
+
+  async function upsert(table, onConflict, resolution, rows) {
+    if (!rows.length) return 0;
+    // return=representation: 실제로 들어간 행만 돌아온다(ignore-duplicates면 이미 있던 행은 빠진다).
+    const res = await post(table, `?on_conflict=${onConflict}&select=${onConflict.split(",")[0]}`, `resolution=${resolution},return=representation`, rows);
     return (await res.json()).length;
   }
 
@@ -58,6 +76,7 @@ export function createCrowdStore({ url, serviceKey }) {
     savePlaces: (areas) => upsert("places", "code", "merge-duplicates", toPlaceRows(areas)),
     // API가 5분 안에 같은 시각 값을 다시 주면 (place_code, observed_at) unique에 걸려 건너뛴다.
     saveSnapshots: (rows) => upsert("crowd_snapshots", "place_code,observed_at", "ignore-duplicates", rows),
+    saveRun: async (row) => void (await post("collect_runs", "", "return=minimal", row)),
   };
 }
 

@@ -60,6 +60,12 @@
 - 장소 즐겨찾기는 DB의 `places`를 참조하므로 `npm run collect`를 한 번은 실행해 두어야 합니다. 마이그레이션은 `npx supabase migration up`으로 적용합니다.
 - 배포한 Supabase 프로젝트에서는 Authentication → Email Templates의 Magic Link 템플릿에 `{{ .Token }}`(6자리 코드)을 넣어야 코드가 메일에 나옵니다. 로컬 기본 템플릿에는 이미 들어 있습니다.
 
+### 관리자 화면 (`admin.html`)
+- http://127.0.0.1:8000/admin.html. 수집 상태(정상·지연·멈춤), 최근 24시간 API 호출·실패, 시간대별 호출 그래프, 자주 난 오류, 최근 수집 실행 20번, 사용자 수(전체·7일 가입·7일 로그인·즐겨찾기·알림)를 1분마다 갱신해 보여 줍니다.
+- 숫자는 DB 함수 `admin_dashboard()`가 돌려주고, 이 함수는 `admin_users`에 있는 사용자가 아니면 거절합니다. 그래서 페이지는 누구나 열 수 있어도 관리자가 아니면 숫자를 받지 못합니다. 이 화면에서는 새 계정을 만들지 않습니다.
+- 관리자 지정은 Supabase SQL 편집기에서: `insert into public.admin_users (user_id) select id from auth.users where email = '메일';` (지우면 바로 권한이 없어집니다). 로컬 seed에는 `admin@example.com`이 관리자로 들어 있습니다.
+- 호출 수·실패는 `npm run collect`가 실행마다 `collect_runs`에 남긴 기록입니다. 이 기능 전부터 켜 둔 `--watch` 수집기는 다시 시작해야 기록이 쌓입니다. 지도 화면이 쓰는 `/api/trains`·`/api/citydata` 프록시 호출은 세지 않습니다.
+
 맨 위 3D 장면은 역마다 승차·하차 기둥을 세우고, 시간 슬라이더로 시간대를 바꾸면 높이가 바뀝니다. 역 좌표는 데이터에 없어 `index.html`에 근사값으로 넣었습니다. 3D 렌더링에는 [Three.js](https://threejs.org/)(MIT, CDN 로드)를 씁니다.
 
 ## 권한 설정

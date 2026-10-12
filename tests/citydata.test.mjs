@@ -95,3 +95,12 @@ test("장소마다 묻고, 실패한 장소는 키를 가린 오류로 돌려준
   globalThis.fetch = async () => assert.fail("캐시 동안 다시 물었다");
   assert.equal(await citydata(), out);
 });
+
+test("캐시를 0으로 주면(수집기) 부를 때마다 새로 묻는다", async () => {
+  let asked = 0;
+  globalThis.fetch = async () => (asked++, reply({ "SeoulRtd.citydata_ppltn": [ROW], RESULT: OK }));
+  const { citydata } = createCitydataSource(undefined, async () => ["POI009"], 0);
+  await citydata();
+  await citydata();
+  assert.equal(asked, 2);
+});

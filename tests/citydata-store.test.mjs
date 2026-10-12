@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
-import { createCrowdHistory, createCrowdStore, isPlaceCode, kstToIso, toPlaceRows, toSnapshotRows } from "../citydata-store.mjs";
+import { RUN_ERROR_SAMPLES, createCrowdHistory, createCrowdStore, isPlaceCode, kstToIso, toPlaceRows, toRunRow, toSnapshotRows } from "../citydata-store.mjs";
 
 const area = (code, now, message = "크게 붐비지는 않아요.") => ({ code, name: code, message, now, forecast: [] });
 
@@ -57,6 +57,36 @@ test("PostgREST에 upsert하고, 이미 있는 시각은 건너뛰게 묻는다"
   await store.savePlaces([{ code: "POI009", name: "광화문·덕수궁", category: "고궁·문화유산" }]);
   assert.match(calls[1].url, /\/places\?on_conflict=code/);
   assert.match(calls[1].init.headers.Prefer, /resolution=merge-duplicates/);
+});
+
+test("수집 한 번을 collect_runs 행으로 바꾼다(호출 수 = 받은 곳 + 실패한 곳)", () => {
+  const errors = Array.from({ length: 12 }, (_, i) => ({ code: `POI${String(i).padStart(3, "0")}`, message: "HTTP 500" }));
+  const row = toRunRow({
+    startedAt: Date.parse("2026-10-12T05:00:00Z"), finishedAt: Date.parse("2026-10-12T05:00:09Z"), sample: false,
+    data: { areas: [area("POI100", {}), area("POI101", {})], errors }, inserted: 1, skipped: 1,
+  });
+  assert.deepEqual({ ...row, api_errors: row.api_errors.length }, {
+    started_at: "2026-10-12T05:00:00.000Z", finished_at: "2026-10-12T05:00:09.000Z", sample: false,
+    api_calls: 14, api_failed: 12, inserted: 1, skipped: 1, error: null, api_errors: RUN_ERROR_SAMPLES,
+  });
+  assert.deepEqual(row.api_errors[0], { code: "POI000", message: "HTTP 500" });
+
+  // API를 묻기 전에 실패하면 호출은 0으로 센다.
+  const failed = toRunRow({ startedAt: 0, finishedAt: 1, sample: true, error: "zip을 읽지 못했습니다" });
+  assert.equal(failed.api_calls, 0);
+  assert.equal(failed.sample, true);
+  assert.equal(failed.error, "zip을 읽지 못했습니다");
+});
+
+test("실행 기록은 collect_runs에 그대로 넣는다", async () => {
+  const calls = [];
+  globalThis.fetch = async (url, init) => (calls.push({ url, init }), new Response(null, { status: 201 }));
+  const store = createCrowdStore({ url: "http://127.0.0.1:54421", serviceKey: "secret-key" });
+  const row = toRunRow({ startedAt: 0, finishedAt: 1, sample: false, data: { areas: [], errors: [] } });
+  assert.equal(await store.saveRun(row), undefined);
+  assert.equal(calls[0].url, "http://127.0.0.1:54421/rest/v1/collect_runs");
+  assert.equal(calls[0].init.headers.Prefer, "return=minimal");
+  assert.deepEqual(JSON.parse(calls[0].init.body), row);
 });
 
 test("저장에 실패하면 키 없이 상태와 응답을 알린다", async () => {
