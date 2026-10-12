@@ -1,5 +1,6 @@
 // 「서울 라이브 3D」 MCP 서버 본체. 9월 승하차 CSV로 역별 시간대 승하차를 알려 준다.
 // 도구: get_station_hourly(역 이름, CSV) · get_station_hourly_api(역·달, CardSubwayTime API) · get_place_crowd(장소, citydata_ppltn API)
+//       · get_bike_stations(따릉이 대여소, bikeList API)
 // 리소스: stations://list(역 목록) · places://list(주요 121장소 목록)
 // 전송은 index.ts(stdio)와 http.ts(Streamable HTTP)가 따로 붙인다.
 import { readFileSync } from "node:fs";
@@ -8,7 +9,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { z } from "zod";
 import { HOURS, count, total } from "../../stats.mjs";
 import { SUBWAY_CSV, decodeCsv, mergeStations, parseCsv, toSubwayRows } from "../../subway-csv.mjs";
-import { findPlace, isSample, loadPlaces, monthLabel, placeCrowd, scrub, stationHourly } from "./openapi.ts";
+import { findBikeStations, findPlace, isSample, loadBikeStations, loadPlaces, monthLabel, placeCrowd, scrub, stationHourly } from "./openapi.ts";
 
 type Row = Record<string, any>;
 
@@ -16,6 +17,7 @@ const ROOT = new URL("../../", import.meta.url);
 export const rows: Row[] = toSubwayRows(parseCsv(decodeCsv(readFileSync(fileURLToPath(new URL(SUBWAY_CSV, ROOT))))));
 const SOURCE = "서울 열린데이터광장 「서울시 지하철 호선별 역별 시간대별 승하차 인원 정보」(서울특별시, 공공누리 제1유형)";
 const CITYDATA_SOURCE = "서울 열린데이터광장 「서울시 실시간 도시데이터(인구)」(서울특별시, 공공누리 제1유형)";
+const BIKE_SOURCE = "서울 열린데이터광장 「서울시 공공자전거 실시간 대여정보」(서울특별시, 공공누리 제1유형)";
 export const month = monthLabel(String(rows[0].USE_MM));
 
 const fmt = (n: number) => n.toLocaleString("ko-KR");
@@ -189,6 +191,54 @@ export function createServer() {
       }
       text.push(`출처: ${CITYDATA_SOURCE}`);
       return { content: [{ type: "text" as const, text: text.join("\n\n") }], structuredContent: { requested: match, ...data } };
+    },
+  );
+
+  server.registerTool(
+    "get_bike_stations",
+    {
+      title: "따릉이 대여소 현황",
+      description:
+        "서울 열린데이터광장 bikeList API로 따릉이(서울 공공자전거) 대여소의 지금 주차된 자전거 수·거치대 수·거치율을 알려 준다. " +
+        "대여소는 이름 일부(예: 망원역, 합정역 7번출구, 여의도), 대여소 번호(예: 102), ID(예: ST-4)로 찾는다. " +
+        "여러 곳이 걸리면 자전거가 많은 순으로 limit곳까지. 1분 캐시." +
+        (isSample ? " (지금은 sample 키라 망원역·합정역 근처 5곳만 받는다.)" : ""),
+      inputSchema: {
+        query: z.string().min(1).describe("대여소 이름 일부·번호·ID(예: 망원역, 102, ST-4)"),
+        limit: z.number().int().min(1).max(50).optional().describe("최대 몇 곳(기본 10)"),
+      },
+      annotations: { readOnlyHint: true, openWorldHint: true },
+    },
+    async ({ query, limit = 10 }) => {
+      let all;
+      try {
+        all = await loadBikeStations();
+      } catch (err) {
+        return textResult(`bikeList API 호출에 실패했습니다: ${scrub(err instanceof Error ? err.message : err)}`, true);
+      }
+      const found = findBikeStations(all, query);
+      if (!found.length) {
+        return textResult(
+          `"${query}" 따릉이 대여소를 찾지 못했습니다(전체 ${fmt(all.length)}곳).` +
+            (isSample ? " sample 키라 망원역·합정역 근처 5곳만 받습니다. SEOUL_OPENAPI_KEY를 설정하면 전체에서 찾습니다." : ""),
+          true,
+        );
+      }
+      const shown = [...found].sort((a, b) => b.bikes - a.bikes).slice(0, limit);
+      const bikes = found.reduce((a, s) => a + s.bikes, 0);
+      const text = [
+        `## 따릉이 대여소 "${query}" — ${fmt(found.length)}곳, 자전거 ${fmt(bikes)}대`,
+        ["| 대여소 | 자전거 | 거치대 | 거치율 |", "|---|---:|---:|---:|",
+          ...shown.map((s) => `| ${s.name} (${s.id}) | ${fmt(s.bikes)}대 | ${fmt(s.racks)} | ${fmt(s.shared)}% |`)].join("\n"),
+      ];
+      if (found.length > shown.length) text.push(`자전거가 많은 순으로 ${shown.length}곳만 보였습니다. limit을 늘리거나 이름을 더 자세히 적으세요.`);
+      text.push("거치율은 자전거 수 ÷ 거치대 수라 100%를 넘을 수 있습니다(거치대 밖에 세워 둔 자전거 포함).");
+      if (isSample) text.push("※ sample 키라 망원역·합정역 근처 5곳만 받았습니다. SEOUL_OPENAPI_KEY를 설정하면 서울 전체 대여소에서 찾습니다.");
+      text.push(`출처: ${BIKE_SOURCE}`);
+      return {
+        content: [{ type: "text" as const, text: text.join("\n\n") }],
+        structuredContent: { query, matched: found.length, totalBikes: bikes, stations: shown },
+      };
     },
   );
 

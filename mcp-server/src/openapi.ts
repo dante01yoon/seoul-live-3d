@@ -73,3 +73,65 @@ export async function findPlace(query: string): Promise<{ match?: Place; candida
 }
 
 export const placeCrowd = (code: string) => fetchCitydataArea(KEY, code);
+
+// 따릉이 대여소 실시간 현황(bikeList). 이름으로 거르는 인자가 없어서 전체(약 2,700곳)를 받아 두고 찾는다.
+// 한 번에 1,000건까지라 나눠 받고, list_total_count는 그 응답의 행 수라서 1,000건보다 적게 오면 끝으로 본다.
+// sample 키는 1~5번째 행(망원·합정 5곳)만 받을 수 있다.
+export type BikeStation = { id: string; name: string; bikes: number; racks: number; shared: number; lat: number; lng: number };
+const BIKE_PAGE = isSample ? 5 : 1000;
+const BIKE_MAX_PAGES = 10;
+export const BIKE_CACHE_MS = 60_000;
+
+async function fetchBikePage(start: number): Promise<Row[]> {
+  const url = `http://openapi.seoul.go.kr:8088/${encodeURIComponent(KEY)}/json/bikeList/${start}/${start + BIKE_PAGE - 1}/`;
+  const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const body = await res.json();
+  const result = body.rentBikeStatus?.RESULT ?? body.RESULT ?? {};
+  if (result.CODE === "INFO-200") return [];
+  if (result.CODE !== "INFO-000") throw new Error(`${result.CODE} ${result.MESSAGE}`);
+  return body.rentBikeStatus.row;
+}
+
+const toBikeStation = (r: Row): BikeStation => ({
+  id: r.stationId,
+  name: String(r.stationName).trim(),
+  bikes: Number(r.parkingBikeTotCnt),
+  racks: Number(r.rackTotCnt),
+  shared: Number(r.shared),
+  lat: Number(r.stationLatitude),
+  lng: Number(r.stationLongitude),
+});
+
+let bikeCache: { at: number; stations: Promise<BikeStation[]> } | null = null;
+export function loadBikeStations(): Promise<BikeStation[]> {
+  if (bikeCache && Date.now() - bikeCache.at < BIKE_CACHE_MS) return bikeCache.stations;
+  const stations = (async () => {
+    const all: Row[] = [];
+    for (let page = 0; page < (isSample ? 1 : BIKE_MAX_PAGES); page++) {
+      const rows = await fetchBikePage(page * BIKE_PAGE + 1);
+      all.push(...rows);
+      if (rows.length < BIKE_PAGE) break;
+    }
+    return all.map(toBikeStation);
+  })();
+  bikeCache = { at: Date.now(), stations };
+  stations.catch(() => { bikeCache = null; }); // 실패는 캐시하지 않는다
+  return stations;
+}
+
+// 대여소 번호(102), ID(ST-4), 이름 일부(망원역, 합정역 7번출구)로 찾는다. 공백은 무시하고, 끝의 "역"을 뺀 이름도 시도한다.
+// 이름은 "102. 망원역 1번출구 앞"처럼 번호가 앞에 붙어 있다.
+export const bikeStationNo = (name: string) => name.match(/^(\d+)\./)?.[1] ?? "";
+export function findBikeStations(stations: BikeStation[], query: string): BikeStation[] {
+  const norm = (s: string) => s.toLowerCase().replace(/\s+/g, "");
+  const q = norm(query);
+  if (!q) return [];
+  const byNo = stations.filter((s) => bikeStationNo(s.name) === q || s.id.toLowerCase() === q);
+  if (byNo.length) return byNo;
+  for (const key of new Set([q, q.replace(/역$/, "")])) {
+    const hit = stations.filter((s) => key && norm(s.name.replace(/^\d+\.\s*/, "")).includes(key));
+    if (hit.length) return hit;
+  }
+  return [];
+}
