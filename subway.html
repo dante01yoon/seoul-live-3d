@@ -500,7 +500,7 @@ import { NEARBY_RADIUS_M, nearbyAreas } from "./nearby-places.mjs";
 import { PLACE_ALERT_LEVELS, STATION_ALERT_RATIOS, activeAlerts, kstHour, newAlerts, throttleAlerts } from "./alerts.mjs";
 import { DB_DOWN_MESSAGE, dbErrorText } from "./db-status.mjs";
 import { norm, searchStations } from "./station-search.mjs";
-import { compareDaily, compareSearch, findStationByName, readCompareParam } from "./station-compare.mjs";
+import { compareDaily, compareSearch, findStationByName, placePeakLabels, readCompareParam } from "./station-compare.mjs";
 
 const pad = (h) => String(h).padStart(2, "0");
 const hourLabel = (h) => `${pad(h)}시대`;
@@ -951,18 +951,17 @@ function renderCompare(row) {
     const d = s.values.map((v, i) => `${i ? "L" : "M"}${x(i).toFixed(1)},${y(v).toFixed(1)}`).join("");
     svg += `<path d="${d}" fill="none" stroke="${s.color}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`;
   }
-  // 피크에 점과 이름표. 두 피크가 가까우면 나중 이름표를 아래로 내린다.
-  const labels = [];
-  for (const s of series) {
-    if (s.peak < 0) continue;
-    const px = x(s.peak), py = y(s.values[s.peak]);
-    let ly = py - 8;
-    if (labels.some((l) => Math.abs(l.x - px) < 90 && Math.abs(l.y - ly) < 12)) ly = py + 16;
-    labels.push({ x: px, y: ly });
-    const anchor = px < CW * 0.25 ? "start" : px > CW * 0.75 ? "end" : "middle";
-    svg += `<circle cx="${px}" cy="${py}" r="4" fill="${s.color}" stroke="var(--panel)" stroke-width="2"/>
-            <text x="${px}" y="${Math.max(ly, CM.top + 8)}" text-anchor="${anchor}" style="fill: var(--text-secondary)">${esc(s.name)}</text>`;
-  }
+  // 피크에 점과 이름표. 이름표 상자가 겹치지 않게 자리를 고른다(placePeakLabels).
+  const peaks = series.filter((s) => s.peak >= 0)
+    .map((s) => ({ s, x: x(s.peak), y: y(s.values[s.peak]), text: s.name }));
+  const spots = placePeakLabels(peaks, { width: CW, top: CM.top, bottom: base });
+  peaks.forEach(({ s, x: px, y: py }) => {
+    svg += `<circle cx="${px}" cy="${py}" r="4" fill="${s.color}" stroke="var(--panel)" stroke-width="2"/>`;
+  });
+  peaks.forEach(({ s }, k) => {
+    const { x: lx, y: ly, anchor } = spots[k];
+    svg += `<text x="${lx}" y="${ly}" text-anchor="${anchor}" style="fill: var(--text-secondary); paint-order: stroke; stroke: var(--panel); stroke-width: 3px">${esc(s.name)}</text>`;
+  });
   HOURS.forEach((h, i) => {
     svg += `<rect class="hit" data-i="${i}" x="${CM.left + i * slot}" y="${CM.top}" width="${slot}" height="${ih}" fill="transparent"/>`;
   });

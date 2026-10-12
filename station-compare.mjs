@@ -49,3 +49,33 @@ export function findStationByName(entries, name) {
     ?? entries.find((e) => key(e.name.replace(/\(.*?\)/g, "")) === k)
     ?? null;
 }
+
+// ---- 피크 이름표 배치 ----
+// points: [{ x, y, text }](피크 점의 SVG 좌표). 이름표 상자가 서로 겹치지 않게 자리를 찾는다:
+// 점 바로 위 → 먼저 단 이름표나 점의 옆(같은 줄) → 점 아래 → 한 줄씩 더 위·아래. 위쪽 끝에 붙는 후보도 상자로 다시 검사한다.
+// 글자 폭은 SVG 밖에서 잴 수 없어 한 글자 charW(px)로 어림한다(한글 10px 글꼴 ≈ 10px). y는 글자 기준선이다.
+// 돌려주는 값: [{ x, y, anchor }] (points와 같은 순서)
+export function placePeakLabels(points, { width, top, bottom, charW = 10, fontSize = 10, gap = 4 } = {}) {
+  // 피크 점(반지름 4 + 테두리)도 처음부터 자리 차지로 넣어 이름표가 다른 역의 점을 덮지 않게 한다.
+  const boxes = points.map((p) => ({ l: p.x - 6, r: p.x + 6, t: p.y - 6, b: p.y + 6 }));
+  const overlaps = (b) => boxes.some((o) => b.l < o.r && o.l < b.r && b.t < o.b && o.t < b.b);
+  const fit = (y) => Math.min(Math.max(y, top + fontSize), bottom);
+  const step = fontSize + gap;
+  return points.map((p) => {
+    const w = [...p.text].length * charW;
+    const anchor = p.x < width * 0.25 ? "start" : p.x > width * 0.75 ? "end" : "middle";
+    const l = anchor === "start" ? p.x : anchor === "end" ? p.x - w : p.x - w / 2;
+    // 후보 = 글자 왼쪽 끝 left, 기준선 y
+    const above = fit(p.y - 8);
+    const cands = [{ left: l, y: above }];
+    for (const o of boxes) cands.push({ left: o.r + gap / 2, y: above }, { left: o.l - gap / 2 - w, y: above });
+    cands.push({ left: l, y: fit(p.y + 16) });
+    for (let k = 1; k <= 4; k++) cands.push({ left: l, y: fit(p.y - 8 - k * step) }, { left: l, y: fit(p.y + 16 + k * step) });
+    const boxAt = (c) => ({ l: c.left - gap / 2, r: c.left + w + gap / 2, t: c.y - fontSize, b: c.y + 2 });
+    const inside = (c) => c.left >= 0 && c.left + w <= width;
+    const c = cands.find((c) => inside(c) && !overlaps(boxAt(c))) ?? cands[0];
+    boxes.push(boxAt(c));
+    if (c.left === l) return { x: p.x, y: c.y, anchor };
+    return { x: c.left, y: c.y, anchor: "start" };
+  });
+}
