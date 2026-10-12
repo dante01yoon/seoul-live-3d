@@ -198,6 +198,17 @@
   .history-note i { display: inline-block; width: 8px; height: 8px; margin: 0 3px 0 6px; border-radius: 2px; }
   .chart .hist-line { fill: none; stroke: var(--text-primary); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
   .chart .hist-band { fill: var(--bar); opacity: 0.45; }
+  /* 지금 연령대 비율 막대(가장 많은 연령대만 답 색) */
+  .ages[hidden] { display: none; }
+  .ages h3 { margin: 0 0 6px; font-size: 12px; font-weight: 600; color: var(--text-muted); }
+  .ages ol { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 3px; }
+  .ages li { display: grid; grid-template-columns: 5.5em minmax(0, 1fr) 3.5em; align-items: center; gap: 8px;
+             font-size: 11px; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+  .ages li > span:last-child { text-align: right; }
+  .ages .track { height: 10px; border-radius: 2px; background: var(--grid); overflow: hidden; }
+  .ages .fill { display: block; height: 100%; border-radius: 2px; background: var(--bar); }
+  .ages .top .fill { background: var(--answer); }
+  .ages .top { color: var(--text-primary); font-weight: 600; }
 
   /* 로그인·내 즐겨찾기·붐빔 알림 */
   .auth-form { display: flex; gap: 8px; }
@@ -422,6 +433,10 @@
         </div>
         <div class="chart chart-slot" id="history-chart">불러오는 중…</div>
         <p class="history-note" id="history-note"></p>
+        <div class="ages" id="history-ages" hidden>
+          <h3 id="history-ages-title">지금 연령대 비율</h3>
+          <ol id="history-ages-list"></ol>
+        </div>
       </section>
     </main>
   </div>
@@ -1233,6 +1248,7 @@ async function loadCity() {
       ? `영역 높이 = 추정 인구(범위의 가운데, 최대 눈금 ${fmt(cityMax)}명)`
       : "영역 높이 = 추정 인구(범위의 가운데)";
     loadHistory();
+    renderAges();
     cityLoaded = true;
   } catch (err) {
     for (const area of cityAreas) area.live = null;
@@ -1328,6 +1344,7 @@ function selectPlace(area) {
   historyChart.textContent = "불러오는 중…";
   historyNote.textContent = "";
   loadHistory();
+  renderAges();
   refreshMap();
   updatePlaceStar();
 }
@@ -1377,6 +1394,23 @@ async function loadHistory() {
       msg.append(document.createElement("br"), btn);
     }
   }
+}
+
+// 지금 연령대 비율: 실시간 도시데이터(/api/citydata)의 ages. 받지 못한 장소(sample 키면 광화문·덕수궁 말고 모두)는 숨긴다.
+const historyAges = document.getElementById("history-ages");
+const ageLabel = (age) => (age === 0 ? "10세 미만" : age === 70 ? "70대 이상" : `${age}대`);
+function renderAges() {
+  const live = historyArea?.live;
+  const ages = live?.ages;
+  historyAges.hidden = !ages;
+  if (!ages) return;
+  const max = Math.max(...ages.map((a) => a.rate));
+  document.getElementById("history-ages-title").textContent = `지금 연령대 비율 · ${clock(live.now.time)} 기준`;
+  document.getElementById("history-ages-list").innerHTML = ages.map((a) => {
+    const pct = a.rate.toLocaleString("ko-KR", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+    return `<li${a.rate === max ? ' class="top"' : ""} aria-label="${ageLabel(a.age)} ${pct}%">`
+      + `<span>${ageLabel(a.age)}</span><span class="track"><span class="fill" style="width: ${max > 0 ? (a.rate / max) * 100 : 0}%"></span></span><span>${pct}%</span></li>`;
+  }).join("");
 }
 
 function renderHistory(area, data) {

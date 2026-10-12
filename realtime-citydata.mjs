@@ -14,22 +14,46 @@ export { CONGEST_LEVELS };
 
 const toNum = (v) => (v === undefined || v === null || v === "" ? null : Number(v));
 
+// 연령대 비율 칸(PPLTN_RATE_0 … PPLTN_RATE_70): 0 = 10세 미만, 70 = 70대 이상. 지금 값만 있고 예측에는 없다.
+export const AGE_GROUPS = [0, 10, 20, 30, 40, 50, 60, 70];
+
 // API 행(citydata_ppltn) → 화면에 쓰는 값만. now와 forecast 항목은 { time, level, min, max } 같은 모양이다.
+// ages는 지금(now.time) 연령대별 비율(%)이다. 한 칸이라도 비면 null.
 export function toCitydata(row) {
   return {
     code: row.AREA_CD,
     name: row.AREA_NM,
     message: row.AREA_CONGEST_MSG,
     now: { time: row.PPLTN_TIME, level: row.AREA_CONGEST_LVL, min: toNum(row.AREA_PPLTN_MIN), max: toNum(row.AREA_PPLTN_MAX) },
+    ages: toAges(row),
     forecast: row.FCST_YN === "Y"
       ? (row.FCST_PPLTN ?? []).map((f) => ({ time: f.FCST_TIME, level: f.FCST_CONGEST_LVL, min: toNum(f.FCST_PPLTN_MIN), max: toNum(f.FCST_PPLTN_MAX) }))
       : [],
   };
 }
 
+function toAges(row) {
+  const ages = AGE_GROUPS.map((age) => ({ age, rate: toNum(row[`PPLTN_RATE_${age}`]) }));
+  return ages.every((a) => Number.isFinite(a.rate)) ? ages : null;
+}
+
 // 저장소의 영역 zip에서 장소 코드 121개를 읽는다.
 export async function areaCodesFromZip(path) {
   return (await parseAreasZip(await readFile(path ?? new URL(CITYDATA_AREAS_ZIP, import.meta.url)))).map((a) => a.code);
+}
+
+// 장소 1곳의 실시간 인구(citydata_ppltn). 키를 가리는 일은 부르는 쪽이 한다(오류 문구에 주소가 섞이지 않게 상태만 적는다).
+export async function fetchCitydataArea(key, code) {
+  const url = `http://openapi.seoul.go.kr:8088/${encodeURIComponent(key)}/json/citydata_ppltn/1/5/${encodeURIComponent(code)}`;
+  const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
+  if (!res.ok) throw new Error(`HTTP ${res.status}`);
+  const body = await res.json();
+  const result = body.RESULT ?? {};
+  const resultCode = result["RESULT.CODE"] ?? result.CODE;
+  if (resultCode !== "INFO-000") throw new Error(`${resultCode} ${result["RESULT.MESSAGE"] ?? result.MESSAGE}`);
+  const [row] = body["SeoulRtd.citydata_ppltn"] ?? [];
+  if (!row) throw new Error("응답에 장소가 없습니다");
+  return toCitydata(row);
 }
 
 // key가 없으면 공개 sample 키를 쓴다. sample 키는 어느 장소를 물어도 광화문·덕수궁 1곳만 돌려주므로 한 번만 묻는다.
@@ -41,18 +65,7 @@ export function createCitydataSource(key, loadCodes = areaCodesFromZip, cacheMs 
   const isSample = KEY === "sample";
   const scrub = (s) => String(s).replaceAll(KEY, "***").replaceAll(encodeURIComponent(KEY), "***");
 
-  async function fetchArea(code) {
-    const url = `http://openapi.seoul.go.kr:8088/${encodeURIComponent(KEY)}/json/citydata_ppltn/1/5/${encodeURIComponent(code)}`;
-    const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const body = await res.json();
-    const result = body.RESULT ?? {};
-    const resultCode = result["RESULT.CODE"] ?? result.CODE;
-    if (resultCode !== "INFO-000") throw new Error(`${resultCode} ${result["RESULT.MESSAGE"] ?? result.MESSAGE}`);
-    const [row] = body["SeoulRtd.citydata_ppltn"] ?? [];
-    if (!row) throw new Error("응답에 장소가 없습니다");
-    return toCitydata(row);
-  }
+  const fetchArea = (code) => fetchCitydataArea(KEY, code);
 
   let codes = null;
   let cache = null; // { at, promise }

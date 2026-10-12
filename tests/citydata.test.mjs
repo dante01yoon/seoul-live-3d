@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { afterEach, test } from "node:test";
 import { CITYDATA_AREAS_ZIP, parseAreasZip } from "../citydata-areas.mjs";
-import { CONGEST_LEVELS, createCitydataSource, toCitydata } from "../realtime-citydata.mjs";
+import { AGE_GROUPS, CONGEST_LEVELS, createCitydataSource, toCitydata } from "../realtime-citydata.mjs";
 
 const areas = await parseAreasZip(await readFile(new URL(`../${CITYDATA_AREAS_ZIP}`, import.meta.url)));
 
@@ -42,6 +42,8 @@ const ROW = {
   AREA_NM: "광화문·덕수궁", AREA_CD: "POI009", AREA_CONGEST_LVL: "보통",
   AREA_CONGEST_MSG: "사람이 몰려있을 수 있지만 크게 붐비지는 않아요.", AREA_PPLTN_MIN: "44000", AREA_PPLTN_MAX: "46000",
   PPLTN_TIME: "2026-10-12 13:40", FCST_YN: "Y",
+  PPLTN_RATE_0: "1.0", PPLTN_RATE_10: "3.1", PPLTN_RATE_20: "20.7", PPLTN_RATE_30: "22.3",
+  PPLTN_RATE_40: "22.1", PPLTN_RATE_50: "18.4", PPLTN_RATE_60: "8.6", PPLTN_RATE_70: "3.7",
   FCST_PPLTN: [
     { FCST_TIME: "2026-10-12 15:00", FCST_CONGEST_LVL: "약간 붐빔", FCST_PPLTN_MIN: "42000", FCST_PPLTN_MAX: "44000" },
     { FCST_TIME: "2026-10-12 16:00", FCST_CONGEST_LVL: "여유", FCST_PPLTN_MIN: "8000", FCST_PPLTN_MAX: "8500" },
@@ -56,6 +58,14 @@ test("API 행을 지금·예측 값으로 바꾼다", () => {
   assert.equal(c.forecast.length, 2);
   for (const v of [c.now, ...c.forecast]) assert.ok(CONGEST_LEVELS.includes(v.level));
   assert.deepEqual(toCitydata({ ...ROW, FCST_YN: "N" }).forecast, []);
+});
+
+test("지금 연령대 비율을 10살 단위 8칸으로 바꾼다", () => {
+  const { ages } = toCitydata(ROW);
+  assert.deepEqual(ages.map((a) => a.age), AGE_GROUPS);
+  assert.deepEqual(ages[3], { age: 30, rate: 22.3 });
+  assert.ok(Math.abs(ages.reduce((s, a) => s + a.rate, 0) - 100) < 0.5);
+  assert.equal(toCitydata({ ...ROW, PPLTN_RATE_70: "" }).ages, null);
 });
 
 const realFetch = globalThis.fetch;
