@@ -176,6 +176,16 @@
   .city-summary { margin: 0; font-size: 12px; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
   .city-summary i { display: inline-block; width: 8px; height: 8px; margin-right: 4px; border-radius: 2px; }
 
+  /* 장소별 붐빔 기록(최근 24시간) */
+  .history-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
+  .history-head h2 { margin: 0; font-size: 14px; color: var(--text-primary); }
+  .history-head small { display: block; margin-top: 2px; font-size: 11px; color: var(--text-muted); font-weight: 400; }
+  .history-head .icon-btn { flex: none; width: 36px; height: 36px; font-size: 14px; background: var(--surface); }
+  .history-note { margin: 0; font-size: 11px; line-height: 1.5; color: var(--text-muted); }
+  .history-note i { display: inline-block; width: 8px; height: 8px; margin: 0 3px 0 6px; border-radius: 2px; }
+  .chart .hist-line { fill: none; stroke: var(--text-primary); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+  .chart .hist-band { fill: var(--bar); opacity: 0.45; }
+
   /* 시간 슬라이더 */
   .timeline { flex-direction: row; align-items: center; gap: 14px; }
   .play { flex: none; width: 44px; height: 44px; border-radius: 50%; border: 0; background: var(--text-primary); color: var(--surface);
@@ -321,6 +331,15 @@
           <p class="city-summary" id="city-summary" aria-live="polite"></p>
         </div>
       </div>
+
+      <section class="panel" id="history-panel" hidden aria-live="polite">
+        <div class="history-head">
+          <h2><span id="history-name"></span><small id="history-sub"></small></h2>
+          <button type="button" class="icon-btn" id="history-close" aria-label="붐빔 기록 닫기">✕</button>
+        </div>
+        <div class="chart chart-slot" id="history-chart">불러오는 중…</div>
+        <p class="history-note" id="history-note"></p>
+      </section>
     </main>
   </div>
 
@@ -328,7 +347,8 @@
     <p>한 달 합계를 일수로 나눈 값입니다. 평일과 주말이 섞여 있습니다.<br>
        개찰구를 지난 승하차 기준입니다. 갈아타는 사람은 포함되지 않습니다.<br>
        역이 한가한 정도이고, 열차 안 혼잡도와는 다를 수 있습니다.<br>
-       도시데이터 인구와 12시간 예측은 서울시가 추정해 범위로 알려 주는 값입니다(5분마다 갱신).</p>
+       도시데이터 인구와 12시간 예측은 서울시가 추정해 범위로 알려 주는 값입니다(5분마다 갱신).<br>
+       장소별 붐빔 기록은 공공 API에 없어 이 서비스가 5분마다 받아 쌓은 값입니다. 수집이 멈춘 동안은 비어 있습니다.</p>
     <p>데이터: 서울시 지하철 호선별 역별 시간대별 승하차 인원 정보(2026년 9월), 서울시 역사마스터 정보, 서울시 지하철 실시간 열차 위치정보, 서울시 실시간 도시데이터(인구), 서울시 주요 121장소 영역 — 서울특별시, 공공누리 제1유형(출처 표시)</p>
   </footer>
 </div>
@@ -865,6 +885,7 @@ async function loadCity() {
     document.getElementById("city-scale").textContent = cityMax
       ? `영역 높이 = 추정 인구(범위의 가운데, 최대 눈금 ${fmt(cityMax)}명)`
       : "영역 높이 = 추정 인구(범위의 가운데)";
+    loadHistory();
   } catch (err) {
     for (const area of cityAreas) area.live = null;
     cityStamp++;
@@ -897,7 +918,160 @@ function cityTooltip(area) {
   if (!v) return head + (area.live ? `${k}시간 뒤 예측이 없습니다` : "실시간 값을 받지 못했습니다");
   return head + `${k ? `${k}시간 뒤 예측` : "지금"} 혼잡도 <b>${esc(v.level)}</b> · 인구 <b>${range(v)}</b><br>`
     + (k ? "" : `<small>${esc(area.live.message)}</small><br>`)
-    + `<small>${esc(v.time)} ${k ? "예측" : "기준"}</small>`;
+    + `<small>${esc(v.time)} ${k ? "예측" : "기준"}</small><br><small>눌러서 최근 24시간 기록 보기</small>`;
+}
+
+// ---- 장소별 붐빔 기록 ----
+// 영역을 누르면 npm run collect가 Supabase에 쌓은 최근 24시간 기록을 작은 그래프로 보여 준다(/api/crowd-history).
+// 선 = 추정 인구 범위의 가운데, 회색 띠 = 범위(최소–최대), 아래 색 띠 = 그때 혼잡도. 기록 사이가 HISTORY_GAP_MS보다 벌어지면 선을 끊는다.
+const HISTORY_GAP_MS = 12 * 60_000; // 5분 간격 수집에서 두 번 넘게 빠지면 수집이 멈췄던 것으로 본다
+const HISTORY_STEP_MS = 5 * 60_000; // 마지막 기록의 혼잡도 띠 폭
+// 그래프는 칸의 실제 폭(px)으로 그린다. viewBox를 늘리면 넓은 화면에서 글자·선까지 커진다.
+const HH = 150, HM = { top: 8, right: 6, bottom: 34, left: 34 };
+const historyPanel = document.getElementById("history-panel");
+const historyChart = document.getElementById("history-chart");
+const historyNote = document.getElementById("history-note");
+let historyArea = null; // 기록을 보고 있는 장소(cityAreas 항목)
+let historyGen = 0;
+const svgWidth = (el) => Number(el.querySelector("svg")?.getAttribute("width") ?? 0);
+let historyShown = null; // 마지막으로 그린 { area, data } — 폭이 바뀌면 다시 그린다
+// 높이만 바뀔 때(불러오는 중 칸 → 그래프)는 다시 그리지 않는다.
+new ResizeObserver(() => {
+  if (historyShown && svgWidth(historyChart) !== Math.max(200, Math.round(historyChart.clientWidth))) renderHistory(historyShown.area, historyShown.data);
+}).observe(historyChart);
+const kstClock = (iso) => new Date(iso).toLocaleTimeString("ko-KR", { timeZone: "Asia/Seoul", hour: "2-digit", minute: "2-digit", hour12: false });
+const congestCss = (level) => CONGEST.find((c) => c.level === level)?.css ?? "--congest-none";
+
+function selectPlace(area) {
+  historyArea = area;
+  historyPanel.hidden = false;
+  document.getElementById("history-name").textContent = area.name;
+  document.getElementById("history-sub").textContent = `${area.category} · 최근 24시간 추정 인구`;
+  historyShown = null;
+  historyChart.className = "chart chart-slot";
+  historyChart.textContent = "불러오는 중…";
+  historyNote.textContent = "";
+  loadHistory();
+  refreshMap();
+}
+document.getElementById("history-close").addEventListener("click", () => {
+  historyArea = null;
+  historyShown = null;
+  historyGen++;
+  historyPanel.hidden = true;
+  refreshMap();
+});
+
+async function loadHistory() {
+  const area = historyArea;
+  if (!area) return;
+  const gen = ++historyGen;
+  try {
+    const res = await fetch(`api/crowd-history?code=${encodeURIComponent(area.code)}`);
+    const body = res.headers.get("content-type")?.includes("json") ? await res.json() : null;
+    if (!res.ok || !body) throw new Error(body?.error ?? (res.status === 404 ? "npm start로 연 서버에서만 보입니다" : `HTTP ${res.status}`));
+    if (gen === historyGen) renderHistory(area, body);
+  } catch (err) {
+    if (gen !== historyGen) return;
+    historyChart.className = "chart chart-slot";
+    historyChart.textContent = `기록을 불러오지 못했습니다: ${err.message}`;
+    historyNote.textContent = "";
+  }
+}
+
+function renderHistory(area, data) {
+  const points = data.points.filter((p) => p.min !== null && p.max !== null)
+    .map((p) => ({ ...p, t: Date.parse(p.time), mid: (p.min + p.max) / 2 }));
+  historyShown = { area, data };
+  if (!points.length) {
+    historyChart.className = "chart chart-slot";
+    historyChart.textContent = "아직 쌓인 기록이 없습니다. 수집기(npm run collect -- --watch)가 5분마다 쌓습니다.";
+    historyNote.textContent = "";
+    return;
+  }
+  historyChart.className = "chart";
+  const HW = Math.max(200, Math.round(historyChart.clientWidth));
+  const t0 = Date.parse(data.from), t1 = Date.parse(data.to);
+  const iw = HW - HM.left - HM.right, ih = HH - HM.top - HM.bottom;
+  const base = HM.top + ih;
+  const top = niceMax(Math.max(...points.map((p) => p.max)));
+  const x = (t) => HM.left + ((t - t0) / (t1 - t0)) * iw;
+  const y = (v) => base - (v / top) * ih;
+
+  // 기록이 끊긴 곳에서 조각을 나눈다.
+  const segs = [];
+  points.forEach((p, j) => {
+    if (!j || p.t - points[j - 1].t > HISTORY_GAP_MS) segs.push([]);
+    segs.at(-1).push(p);
+  });
+
+  let svg = "";
+  for (const v of [0, top / 2, top]) {
+    svg += `<line x1="${HM.left}" x2="${HW - HM.right}" y1="${y(v)}" y2="${y(v)}" stroke="var(--grid)"/>
+            <text x="${HM.left - 6}" y="${y(v) + 3}" text-anchor="end">${compact(v)}</text>`;
+  }
+  // 시각 눈금: KST 0·6·12·18시
+  for (let t = Math.ceil(t0 / 3600_000) * 3600_000; t <= t1; t += 3600_000) {
+    const h = (new Date(t).getUTCHours() + 9) % 24;
+    if (h % 6) continue;
+    svg += `<text x="${x(t)}" y="${HH - 4}" text-anchor="middle">${pad(h)}시</text>`;
+  }
+  for (const seg of segs) {
+    if (seg.length === 1) {
+      const [p] = seg;
+      svg += `<line class="hist-band" x1="${x(p.t)}" x2="${x(p.t)}" y1="${y(p.min)}" y2="${y(p.max)}" stroke="var(--bar)" stroke-width="4"/>
+              <circle cx="${x(p.t)}" cy="${y(p.mid)}" r="3" fill="var(--text-primary)"/>`;
+      continue;
+    }
+    const upper = seg.map((p) => `${x(p.t)},${y(p.max)}`);
+    const lower = seg.map((p) => `${x(p.t)},${y(p.min)}`).reverse();
+    svg += `<polygon class="hist-band" points="${[...upper, ...lower].join(" ")}"/>
+            <polyline class="hist-line" points="${seg.map((p) => `${x(p.t)},${y(p.mid)}`).join(" ")}"/>`;
+  }
+  // 혼잡도 띠: 기록마다 다음 기록까지(끊긴 곳은 5분만) 그때 단계 색으로 칠한다.
+  points.forEach((p, j) => {
+    const next = points[j + 1]?.t;
+    const end = Math.min(next && next - p.t <= HISTORY_GAP_MS ? next : p.t + HISTORY_STEP_MS, t1);
+    svg += `<rect x="${x(p.t)}" y="${base + 4}" width="${Math.max(1, x(end) - x(p.t))}" height="6" fill="var(${congestCss(p.level)})"/>`;
+  });
+  const cross = `<line class="hist-cross" x1="0" x2="0" y1="${HM.top}" y2="${base + 10}" stroke="var(--text-muted)" stroke-dasharray="2 2" visibility="hidden"/>`;
+  svg += cross + `<rect x="${HM.left}" y="${HM.top}" width="${iw}" height="${ih + 10}" fill="transparent"/>`;
+
+  const last = points.at(-1);
+  const peak = points.reduce((a, p) => (p.mid > a.mid ? p : a));
+  historyChart.innerHTML = `<svg viewBox="0 0 ${HW} ${HH}" width="${HW}" height="${HH}" role="img"></svg><div class="chart-tip" hidden></div>`;
+  const svgEl = historyChart.querySelector("svg");
+  svgEl.setAttribute("aria-label", `${area.name} 최근 24시간 추정 인구. 기록 ${fmt(points.length)}개, `
+    + `가장 많았던 때 ${kstClock(peak.time)} ${range(peak)}, 마지막 ${kstClock(last.time)} ${last.level} ${range(last)}`);
+  svgEl.innerHTML = svg;
+  historyNote.innerHTML = `기록 ${fmt(points.length)}개 · 마지막 ${kstClock(last.time)} <b>${esc(last.level)}</b> ${range(last)}`
+    + ` · 가장 많았던 때 ${kstClock(peak.time)} ${range(peak)}<br>선 = 추정 인구 범위의 가운데, 회색 띠 = 범위, 아래 띠 = 혼잡도`;
+
+  // 가장 가까운 기록에 십자선과 툴팁
+  const tip = historyChart.querySelector(".chart-tip");
+  const crossEl = svgEl.querySelector(".hist-cross");
+  svgEl.addEventListener("pointermove", (e) => {
+    const box = svgEl.getBoundingClientRect();
+    const t = t0 + (((e.clientX - box.left) * (HW / box.width) - HM.left) / iw) * (t1 - t0);
+    const p = points.reduce((a, q) => (Math.abs(q.t - t) < Math.abs(a.t - t) ? q : a));
+    if (Math.abs(p.t - t) > HISTORY_GAP_MS) {
+      tip.hidden = true;
+      crossEl.setAttribute("visibility", "hidden");
+      return;
+    }
+    crossEl.setAttribute("x1", x(p.t));
+    crossEl.setAttribute("x2", x(p.t));
+    crossEl.setAttribute("visibility", "visible");
+    tip.innerHTML = `${kstClock(p.time)} · <i style="display:inline-block;width:8px;height:8px;border-radius:2px;background:var(${congestCss(p.level)})"></i> ${esc(p.level)} · <b>${range(p)}</b>`;
+    tip.hidden = false;
+    const wrap = historyChart.getBoundingClientRect();
+    const left = (x(p.t) / HW) * box.width + (box.left - wrap.left) + 12;
+    tip.style.left = `${Math.max(0, Math.min(left, wrap.width - tip.offsetWidth))}px`;
+  });
+  svgEl.addEventListener("pointerleave", () => {
+    tip.hidden = true;
+    crossEl.setAttribute("visibility", "hidden");
+  });
 }
 
 function trainTooltip(t) {
@@ -980,8 +1154,12 @@ Promise.all([fetchCsv(SUBWAY_CSV), fetchCsv(STATION_MASTER_CSV)])
         elevationScale: cityMax ? CITY_MAX_ELEVATION_M / cityMax : 0,
         getFillColor: (d) => { const v = citySnap(d.area, k); return v ? [...congestRgb(v.level), CITY_ALPHA] : [...CONGEST_NONE_RGB, 90]; },
         autoHighlight: true, highlightColor: [232, 230, 223, 120],
-        updateTriggers: { getElevation: [k, cityStamp], getFillColor: [k, cityStamp] },
+        // 기록을 보고 있는 장소는 --answer 테두리로 표시한다.
+        wireframe: true,
+        getLineColor: (d) => (d.area === historyArea ? [...ANSWER_RGB, 255] : [0, 0, 0, 0]),
+        updateTriggers: { getElevation: [k, cityStamp], getFillColor: [k, cityStamp], getLineColor: historyArea?.code },
         transitions: reduceMotion ? {} : { getElevation: { duration: 400, easing: (t) => t * (2 - t) } },
+        onClick: ({ object }) => object && selectPlace(object.area),
       }),
       // 열차 점은 기둥에 가려지지 않게 깊이 검사 없이 맨 위에 그린다. 급행·특급은 조금 크게.
       new deck.ScatterplotLayer({

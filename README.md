@@ -45,6 +45,9 @@
 - API: 서울 열린데이터광장 「서울시 실시간 인구데이터」(`citydata_ppltn`), `http://openapi.seoul.go.kr:8088/<인증키>/json/citydata_ppltn/1/5/<장소코드>`. 장소마다 지금 혼잡도·추정 인구 범위와 12시간 예측을 줍니다.
 - 인증키는 **일반 인증키**입니다(실시간 지하철 인증키와 다름). `.env`에 `SEOUL_OPENAPI_KEY=발급받은키`로 넣습니다. 없으면 `sample` 키를 쓰는데, sample 키는 어느 장소를 물어도 광화문·덕수궁 1곳만 돌려줍니다.
 - 서버는 121곳을 5분에 한 번(동시 8개씩)만 묻습니다. 장소 영역은 `data/raw/citydata/서울시 주요 121장소 영역.zip`을 읽을 때 풀어서 씁니다(`citydata-areas.mjs`).
+- API는 지금 값과 예측만 주고 지난 기록은 주지 않습니다. `npm run collect -- --watch`를 켜 두면 5분마다 121곳을 받아 Supabase `crowd_snapshots`에 쌓습니다(한 번만 받으려면 `npm run collect`, crontab 등에서 부를 때). 같은 장소·같은 시각(`PPLTN_TIME`)은 한 번만 들어갑니다.
+  `.env`에 `SUPABASE_URL`(로컬은 `http://127.0.0.1:54421`)과 `SUPABASE_SERVICE_ROLE_KEY`(`npx supabase status`의 Secret 키)를 넣습니다. 이 키는 RLS를 우회하므로 브라우저 코드에 넣지 않습니다.
+- 지도에서 장소 영역을 누르면 쌓인 기록 중 최근 24시간을 작은 그래프로 보여 줍니다(선 = 추정 인구 범위의 가운데, 회색 띠 = 범위, 아래 띠 = 혼잡도, 수집이 멈춘 구간은 끊김). 서버가 `/api/crowd-history?code=POI009`로 읽어 주며, `.env`(Vercel은 환경 변수)에 `SUPABASE_URL`과 `SUPABASE_PUBLISHABLE_KEY`(`npx supabase status`의 Publishable 키, 읽기 전용)가 필요합니다.
 - 출처: 서울특별시 (https://data.seoul.go.kr/dataList/OA-21778/S/1/datasetView.do), 공공누리 제1유형(출처 표시).
 
 맨 위 3D 장면은 역마다 승차·하차 기둥을 세우고, 시간 슬라이더로 시간대를 바꾸면 높이가 바뀝니다. 역 좌표는 데이터에 없어 `index.html`에 근사값으로 넣었습니다. 3D 렌더링에는 [Three.js](https://threejs.org/)(MIT, CDN 로드)를 씁니다.
