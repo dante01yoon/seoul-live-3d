@@ -19,3 +19,33 @@ export function compareDaily(a, b) {
     widest: argMax(gaps),
   };
 }
+
+// ---- 주소로 공유: ?compare=강남,홍대입구 ----
+// 쉼표는 그대로 두고 역 이름만 인코딩한다(주소창에서 읽기 쉽게). 다른 검색 파라미터는 건드리지 않는다.
+export const COMPARE_PARAM = "compare";
+
+// location.search → 역 이름 최대 2개(앞뒤 공백·빈 칸은 뺀다)
+export function readCompareParam(search) {
+  const v = new URLSearchParams(search).get(COMPARE_PARAM) ?? "";
+  return v.split(",").map((s) => s.trim()).filter(Boolean).slice(0, 2);
+}
+
+// 지금 search에서 compare만 names로 바꾼 새 search("" 또는 "?…"). names가 비면 compare를 지운다.
+export function compareSearch(search, names) {
+  const params = new URLSearchParams(search);
+  params.delete(COMPARE_PARAM);
+  const parts = [params.toString()];
+  if (names.length) parts.push(`${COMPARE_PARAM}=${names.map(encodeURIComponent).join(",")}`);
+  const s = parts.filter(Boolean).join("&");
+  return s ? `?${s}` : "";
+}
+
+// 주소의 역 이름 → entries 항목. 이름이 같거나, 괄호 부역명을 뺀 이름이 같으면("잠실" → 잠실(송파구청)) 맞는다.
+// 주소는 고른 결과를 다시 여는 것이므로 초성·부분 일치는 하지 않는다.
+export function findStationByName(entries, name) {
+  const key = (s) => s.replace(/\s/g, "");
+  const k = key(name);
+  return entries.find((e) => key(e.name) === k)
+    ?? entries.find((e) => key(e.name.replace(/\(.*?\)/g, "")) === k)
+    ?? null;
+}

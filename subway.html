@@ -401,6 +401,7 @@
         <div class="cmp-legend" id="cmp-legend" hidden></div>
         <div class="chart chart-slot" id="cmp-chart">위에서 역을 고르고 여기서 비교할 역을 찾으면 두 역 그래프가 나옵니다.</div>
         <p class="cmp-summary" id="cmp-summary" aria-live="polite"></p>
+        <button type="button" class="chip" id="cmp-share" hidden aria-label="이 비교의 링크 복사">링크 복사</button>
         <details class="cmp-table" id="cmp-table" hidden><summary>표로 보기</summary><table></table></details>
       </section>
     </aside>
@@ -499,7 +500,7 @@ import { NEARBY_RADIUS_M, nearbyAreas } from "./nearby-places.mjs";
 import { PLACE_ALERT_LEVELS, STATION_ALERT_RATIOS, activeAlerts, kstHour, newAlerts, throttleAlerts } from "./alerts.mjs";
 import { DB_DOWN_MESSAGE, dbErrorText } from "./db-status.mjs";
 import { norm, searchStations } from "./station-search.mjs";
-import { compareDaily } from "./station-compare.mjs";
+import { compareDaily, compareSearch, findStationByName, readCompareParam } from "./station-compare.mjs";
 
 const pad = (h) => String(h).padStart(2, "0");
 const hourLabel = (h) => `${pad(h)}시대`;
@@ -819,6 +820,7 @@ let compareEntry = null; // 비교할 역(entries 항목, 노선 합산)
 
 function selectCompare(entry) {
   compareEntry = entry;
+  shareNote = "";
   cmpQ.value = entry?.name ?? "";
   cmpResults.replaceChildren();
   render();
@@ -858,14 +860,58 @@ cmpClear.addEventListener("click", () => {
   cmpQ.focus();
 });
 
+// ---- 주소로 공유: ?compare=강남,홍대입구로 열면 두 역을 골라 바로 비교한다 ----
+// 두 역을 고르면 주소도 그 두 역으로 바꾸고(replaceState, 방문 기록은 늘리지 않는다), 비교를 지우면 compare를 뺀다.
+const cmpShare = document.getElementById("cmp-share");
+const SHARE_LABEL = { text: cmpShare.textContent, aria: cmpShare.getAttribute("aria-label") };
+const sharedCompare = readCompareParam(location.search); // 처음 연 주소의 역 이름들
+let shareNote = ""; // 주소의 역을 찾지 못했을 때 안내(비교가 그려지기 전까지 보인다)
+
+function syncCompareUrl(ready) {
+  if (!entries.length) return; // 데이터가 오기 전 render()가 처음 주소를 지우지 않게
+  const search = compareSearch(location.search, ready ? [selected.entry.name, compareEntry.name] : []);
+  if (search !== location.search) history.replaceState(history.state, "", `${location.pathname}${search}${location.hash}`);
+}
+
+// 데이터를 받은 뒤 한 번 부른다. 이름이 같은 역만 고른다(findStationByName, 초성·부분 일치는 하지 않음).
+function openSharedCompare() {
+  if (!sharedCompare.length) return;
+  const [a, b] = sharedCompare.map((name) => findStationByName(entries, name));
+  const missing = sharedCompare.filter((name, i) => ![a, b][i]);
+  if (missing.length) shareNote = `주소의 역을 찾지 못했습니다: ${missing.join(", ")}`;
+  compareEntry = b ?? null;
+  cmpQ.value = b?.name ?? "";
+  if (a) selectEntry(a);
+  else render();
+  if (a && b) document.getElementById("compare").scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "nearest" });
+}
+
+let shareTimer = null;
+cmpShare.addEventListener("click", async () => {
+  let done = true;
+  try {
+    await navigator.clipboard.writeText(location.href);
+  } catch {
+    done = false; // http(로컬 주소가 아닌 곳)나 권한 거부면 clipboard를 쓸 수 없다
+  }
+  cmpShare.textContent = done ? "복사했습니다" : "주소창의 링크를 복사하세요";
+  cmpShare.setAttribute("aria-label", done ? "비교 링크를 복사했습니다" : "복사하지 못했습니다. 주소창의 링크를 복사하세요");
+  clearTimeout(shareTimer);
+  shareTimer = setTimeout(() => {
+    cmpShare.textContent = SHARE_LABEL.text;
+    cmpShare.setAttribute("aria-label", SHARE_LABEL.aria);
+  }, 2000);
+});
+
 function renderCompare(row) {
   cmpClear.hidden = !compareEntry;
   const ready = Boolean(row && compareEntry);
-  cmpLegend.hidden = cmpTable.hidden = !ready;
+  cmpLegend.hidden = cmpTable.hidden = cmpShare.hidden = !ready;
+  syncCompareUrl(ready);
   if (!ready) {
     cmpChart.classList.add("chart-slot");
     cmpChart.textContent = row ? "비교할 역을 찾아 고르면 두 역 그래프가 나옵니다." : CMP_EMPTY;
-    cmpSummary.textContent = "";
+    cmpSummary.textContent = shareNote;
     return;
   }
   const nameA = selected.entry.name;
@@ -1802,6 +1848,7 @@ Promise.all([fetchCsv(SUBWAY_CSV), fetchCsv(STATION_MASTER_CSV)])
     refreshMap = () => deckgl.setProps({ layers: layers(Number(slider.value)) });
     renderTop5();
     showResults(); // 불러오는 동안 입력한 검색어가 있으면 결과를 보여 준다
+    openSharedCompare(); // ?compare=A,B로 열었으면 두 역을 고른다
     renderFavorites();
     pollTrains();
     fetchAreas()
