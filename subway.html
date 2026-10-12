@@ -31,6 +31,8 @@
     --congest-3: #fd7e14;    /* 약간 붐빔 */
     --congest-4: #f03e3e;    /* 붐빔 */
     --congest-none: #5b6273; /* 그 시각 값 없음 */
+    --compare-a: #c0851c;    /* 두 역 비교: 고른 역(어두운 바탕에서 색각 구분 검증) */
+    --compare-b: #3d8fdb;    /* 두 역 비교: 비교할 역 */
   }
   * { box-sizing: border-box; }
   body { font-family: system-ui, sans-serif; background: var(--surface); color: var(--text-primary); margin: 24px; }
@@ -145,6 +147,24 @@
                border: 1px solid var(--border); font-size: 12px; line-height: 1.5; white-space: nowrap; }
   .chart-tip[hidden] { display: none; }
   .chart-tip b { font-variant-numeric: tabular-nums; }
+
+  /* 두 역 비교 */
+  .cmp-legend { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12px; color: var(--text-secondary); }
+  .cmp-legend[hidden] { display: none; }
+  .cmp-legend span { display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
+  .cmp-legend i { flex: none; width: 14px; height: 2px; border-radius: 1px; }
+  .cmp-summary { margin: 0; font-size: 12px; line-height: 1.6; color: var(--text-secondary); }
+  .cmp-summary:empty { display: none; }
+  .cmp-summary b { color: var(--text-primary); font-variant-numeric: tabular-nums; }
+  .cmp-table { font-size: 12px; color: var(--text-secondary); }
+  .cmp-table[hidden] { display: none; }
+  .cmp-table summary { cursor: pointer; min-height: 24px; }
+  .cmp-table table { width: 100%; border-collapse: collapse; margin-top: 6px; font-variant-numeric: tabular-nums; }
+  .cmp-table th, .cmp-table td { padding: 3px 4px; border-bottom: 1px solid var(--grid); text-align: right; font-weight: 400; }
+  .cmp-table th:first-child, .cmp-table td:first-child { text-align: left; }
+  .cmp-table thead th { color: var(--text-muted); overflow-wrap: anywhere; }
+  .panel-head .icon-btn { flex: none; width: 36px; height: 36px; font-size: 14px; background: var(--surface); }
+  .panel-head .icon-btn[hidden] { display: none; }
 
   .chart-slot { height: 170px; border: 1px dashed var(--border); border-radius: 10px; display: grid; place-items: center;
                 font-size: 13px; color: var(--text-muted); }
@@ -297,7 +317,7 @@
     <aside class="side">
       <section class="panel">
         <label for="q">역 찾기</label>
-        <input id="q" class="search" type="search" placeholder="역 이름 일부 (예: 가산)" autocomplete="off">
+        <input id="q" class="search" type="search" placeholder="역 이름 일부나 초성 (예: 가산, ㄱㄴ)" autocomplete="off">
         <ul class="results" id="results" aria-label="검색 결과"></ul>
         <div class="chips" id="lines" role="group" aria-label="노선"></div>
         <div class="top5-head"><span id="top5-title">지금 시간대 혼잡 TOP 5</span><output id="top5-hour" for="hour"></output></div>
@@ -369,6 +389,20 @@
         <h2>시간대별 하루 평균 (승차+하차)</h2>
         <div class="chart chart-slot" id="chart">역을 고르면 시간대 그래프가 나옵니다.</div>
         <p class="muted" style="margin: 0; font-size: 11px">2D 차트와 3D 기둥은 같은 눈금을 씁니다.</p>
+      </section>
+
+      <section class="panel" id="compare">
+        <div class="panel-head">
+          <h2>두 역 비교 · 시간대별 하루 평균</h2>
+          <button type="button" class="icon-btn" id="cmp-clear" hidden aria-label="비교할 역 지우기">✕</button>
+        </div>
+        <input id="cmp-q" class="search" type="search" placeholder="비교할 역 이름 일부나 초성 (예: 강남)" autocomplete="off" aria-label="비교할 역 찾기">
+        <ul class="results" id="cmp-results" aria-label="비교할 역 검색 결과"></ul>
+        <div class="cmp-legend" id="cmp-legend" hidden></div>
+        <div class="chart chart-slot" id="cmp-chart">위에서 역을 고르고 여기서 비교할 역을 찾으면 두 역 그래프가 나옵니다.</div>
+        <p class="cmp-summary" id="cmp-summary" aria-live="polite"></p>
+        <button type="button" class="chip" id="cmp-share" hidden aria-label="이 비교의 링크 복사">링크 복사</button>
+        <details class="cmp-table" id="cmp-table" hidden><summary>표로 보기</summary><table></table></details>
       </section>
     </aside>
 
@@ -465,6 +499,8 @@ import { fetchAreas } from "./citydata-areas.mjs";
 import { NEARBY_RADIUS_M, nearbyAreas } from "./nearby-places.mjs";
 import { PLACE_ALERT_LEVELS, STATION_ALERT_RATIOS, activeAlerts, kstHour, newAlerts, throttleAlerts } from "./alerts.mjs";
 import { DB_DOWN_MESSAGE, dbErrorText } from "./db-status.mjs";
+import { norm, searchStations } from "./station-search.mjs";
+import { compareDaily, compareSearch, findStationByName, placePeakLabels, readCompareParam } from "./station-compare.mjs";
 
 const pad = (h) => String(h).padStart(2, "0");
 const hourLabel = (h) => `${pad(h)}시대`;
@@ -491,7 +527,7 @@ winStart.value = HOURS.indexOf(defaultHours[0]);
 winEnd.value = HOURS.indexOf(defaultHours.at(-1));
 
 // ---- 상태 ----
-let entries = [];       // 역 검색 항목(환승역은 합친 행 하나). { id, name, lines, merged, byLine, station }
+let entries = [];       // 역 검색 항목(환승역은 합친 행 하나). { id, name, lines, merged, byLine, station, daily, riders }
 const entryByName = new Map(); // 역명 → entries 항목(즐겨찾기 역은 역명으로 가리킨다)
 let selected = null;    // { entry, line } — line이 null이면 노선 합산
 let windowId = DEFAULT_WINDOW_ID;
@@ -565,27 +601,9 @@ const q = document.getElementById("q");
 const results = document.getElementById("results");
 const linesEl = document.getElementById("lines");
 
-// 공백을 무시하고, 괄호 부역명은 뺀 이름을 먼저 본다("잠실" → 잠실(송파구청)).
-const norm = (s) => s.replace(/\s/g, "").toLowerCase();
-const baseName = (s) => s.replace(/\(.*?\)/g, "");
+// 이름 일부나 초성으로 찾는다("ㄱㄴ" → 강남). 점수·정렬은 station-search.mjs.
 const MAX_RESULTS = 8;
-function search(text) {
-  const k = norm(text);
-  if (!k) return [];
-  const score = (e) => {
-    const b = norm(baseName(e.name));
-    if (b === k) return 0;
-    if (b.startsWith(k)) return 1;
-    if (b.includes(k)) return 2;
-    return norm(e.name).includes(k) ? 3 : -1; // 부역명으로도 찾는다(예: DDP)
-  };
-  return entries
-    .map((e) => [score(e), e])
-    .filter(([s]) => s >= 0)
-    .sort((a, b) => a[0] - b[0] || a[1].name.localeCompare(b[1].name, "ko"))
-    .slice(0, MAX_RESULTS)
-    .map(([, e]) => e);
-}
+const search = (text) => searchStations(entries, text, MAX_RESULTS);
 
 function showResults() {
   results.replaceChildren();
@@ -785,6 +803,211 @@ function renderChart(row, win, quiet) {
     tip.style.left = `${Math.min(left, box.width - tip.offsetWidth)}px`;
   });
   svgEl.addEventListener("pointerleave", () => (tip.hidden = true));
+}
+
+// ---- 두 역 비교: 고른 역과 비교할 역의 시간대별 하루 평균 꺾은선 ----
+// 같은 기준으로 견주도록 두 역 모두 노선 칩과 상관없이 전체 노선 합계(entry.daily)를 쓴다.
+// 두 선은 한 눈금을 쓰되, 작은 역끼리도 읽히게 3D 공통 눈금(yMax)이 아니라 두 역의 최댓값으로 잡는다.
+const cmpQ = document.getElementById("cmp-q");
+const cmpResults = document.getElementById("cmp-results");
+const cmpClear = document.getElementById("cmp-clear");
+const cmpLegend = document.getElementById("cmp-legend");
+const cmpChart = document.getElementById("cmp-chart");
+const cmpSummary = document.getElementById("cmp-summary");
+const cmpTable = document.getElementById("cmp-table");
+const CMP_EMPTY = cmpChart.textContent;
+let compareEntry = null; // 비교할 역(entries 항목, 노선 합산)
+
+function selectCompare(entry) {
+  compareEntry = entry;
+  shareNote = "";
+  cmpQ.value = entry?.name ?? "";
+  cmpResults.replaceChildren();
+  render();
+}
+function showCompareResults() {
+  cmpResults.replaceChildren();
+  if (!norm(cmpQ.value) || !entries.length) return;
+  const found = search(cmpQ.value);
+  if (!found.length) {
+    cmpResults.innerHTML = `<li class="empty">찾는 역이 없습니다.</li>`;
+    return;
+  }
+  for (const e of found) {
+    const li = document.createElement("li");
+    const b = document.createElement("button");
+    b.type = "button";
+    b.setAttribute("aria-label", `${e.name} ${e.lines.join("·")} 비교하기`);
+    b.innerHTML = `<span></span><small></small>`;
+    b.firstChild.textContent = e.name;
+    b.lastChild.textContent = e.lines.join("·");
+    b.addEventListener("click", () => selectCompare(e));
+    li.append(b);
+    cmpResults.append(li);
+  }
+}
+cmpQ.addEventListener("input", showCompareResults);
+cmpQ.addEventListener("keydown", (ev) => {
+  if (ev.key === "Enter") {
+    const first = search(cmpQ.value)[0];
+    if (first) selectCompare(first);
+  } else if (ev.key === "Escape") {
+    cmpResults.replaceChildren();
+  }
+});
+cmpClear.addEventListener("click", () => {
+  selectCompare(null);
+  cmpQ.focus();
+});
+
+// ---- 주소로 공유: ?compare=강남,홍대입구로 열면 두 역을 골라 바로 비교한다 ----
+// 두 역을 고르면 주소도 그 두 역으로 바꾸고(replaceState, 방문 기록은 늘리지 않는다), 비교를 지우면 compare를 뺀다.
+const cmpShare = document.getElementById("cmp-share");
+const SHARE_LABEL = { text: cmpShare.textContent, aria: cmpShare.getAttribute("aria-label") };
+const sharedCompare = readCompareParam(location.search); // 처음 연 주소의 역 이름들
+let shareNote = ""; // 주소의 역을 찾지 못했을 때 안내(비교가 그려지기 전까지 보인다)
+
+function syncCompareUrl(ready) {
+  if (!entries.length) return; // 데이터가 오기 전 render()가 처음 주소를 지우지 않게
+  const search = compareSearch(location.search, ready ? [selected.entry.name, compareEntry.name] : []);
+  if (search !== location.search) history.replaceState(history.state, "", `${location.pathname}${search}${location.hash}`);
+}
+
+// 데이터를 받은 뒤 한 번 부른다. 이름이 같은 역만 고른다(findStationByName, 초성·부분 일치는 하지 않음).
+function openSharedCompare() {
+  if (!sharedCompare.length) return;
+  const [a, b] = sharedCompare.map((name) => findStationByName(entries, name));
+  const missing = sharedCompare.filter((name, i) => ![a, b][i]);
+  if (missing.length) shareNote = `주소의 역을 찾지 못했습니다: ${missing.join(", ")}`;
+  compareEntry = b ?? null;
+  cmpQ.value = b?.name ?? "";
+  if (a) selectEntry(a);
+  else render();
+  if (a && b) document.getElementById("compare").scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "nearest" });
+}
+
+let shareTimer = null;
+cmpShare.addEventListener("click", async () => {
+  let done = true;
+  try {
+    await navigator.clipboard.writeText(location.href);
+  } catch {
+    done = false; // http(로컬 주소가 아닌 곳)나 권한 거부면 clipboard를 쓸 수 없다
+  }
+  cmpShare.textContent = done ? "복사했습니다" : "주소창의 링크를 복사하세요";
+  cmpShare.setAttribute("aria-label", done ? "비교 링크를 복사했습니다" : "복사하지 못했습니다. 주소창의 링크를 복사하세요");
+  clearTimeout(shareTimer);
+  shareTimer = setTimeout(() => {
+    cmpShare.textContent = SHARE_LABEL.text;
+    cmpShare.setAttribute("aria-label", SHARE_LABEL.aria);
+  }, 2000);
+});
+
+function renderCompare(row) {
+  cmpClear.hidden = !compareEntry;
+  const ready = Boolean(row && compareEntry);
+  cmpLegend.hidden = cmpTable.hidden = cmpShare.hidden = !ready;
+  syncCompareUrl(ready);
+  if (!ready) {
+    cmpChart.classList.add("chart-slot");
+    cmpChart.textContent = row ? "비교할 역을 찾아 고르면 두 역 그래프가 나옵니다." : CMP_EMPTY;
+    cmpSummary.textContent = shareNote;
+    return;
+  }
+  const nameA = selected.entry.name;
+  const nameB = compareEntry.name;
+  const a = selected.entry.daily;
+  const b = compareEntry.daily;
+  const c = compareDaily(a, b);
+  const series = [
+    { name: nameA, values: a, color: "var(--compare-a)", peak: c.peakA },
+    { name: nameB, values: b, color: "var(--compare-b)", peak: c.peakB },
+  ];
+
+  // 범례(색만으로 구분하지 않게 선 끝 이름표도 단다)
+  cmpLegend.replaceChildren(...series.map((s) => {
+    const span = document.createElement("span");
+    span.innerHTML = `<i style="background: ${s.color}"></i><span></span>`;
+    span.lastChild.textContent = `${s.name} · 전체 노선 합계`;
+    return span;
+  }));
+
+  const top = niceMax(Math.max(1, ...a, ...b));
+  const iw = CW - CM.left - CM.right, ih = CH - CM.top - CM.bottom;
+  const slot = iw / HOURS.length;
+  const base = CM.top + ih;
+  const x = (i) => CM.left + (i + 0.5) * slot;
+  const y = (v) => base - (v / top) * ih;
+  let svg = "";
+  for (const v of [0, top / 2, top]) {
+    svg += `<line x1="${CM.left}" x2="${CW - CM.right}" y1="${y(v)}" y2="${y(v)}" stroke="var(--grid)"/>
+            <text x="${CM.left - 6}" y="${y(v) + 3}" text-anchor="end">${compact(v)}</text>`;
+  }
+  HOURS.forEach((h, i) => {
+    if (i % 4 === 0) svg += `<text x="${x(i)}" y="${CH - 6}" text-anchor="middle">${pad(h)}시</text>`;
+  });
+  svg += `<line class="cross" x1="0" x2="0" y1="${CM.top}" y2="${base}" stroke="var(--text-muted)" visibility="hidden"/>`;
+  for (const s of series) {
+    const d = s.values.map((v, i) => `${i ? "L" : "M"}${x(i).toFixed(1)},${y(v).toFixed(1)}`).join("");
+    svg += `<path d="${d}" fill="none" stroke="${s.color}" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"/>`;
+  }
+  // 피크에 점과 이름표. 이름표 상자가 겹치지 않게 자리를 고른다(placePeakLabels).
+  const peaks = series.filter((s) => s.peak >= 0)
+    .map((s) => ({ s, x: x(s.peak), y: y(s.values[s.peak]), text: s.name }));
+  const spots = placePeakLabels(peaks, { width: CW, top: CM.top, bottom: base });
+  peaks.forEach(({ s, x: px, y: py }) => {
+    svg += `<circle cx="${px}" cy="${py}" r="4" fill="${s.color}" stroke="var(--panel)" stroke-width="2"/>`;
+  });
+  peaks.forEach(({ s }, k) => {
+    const { x: lx, y: ly, anchor } = spots[k];
+    svg += `<text x="${lx}" y="${ly}" text-anchor="${anchor}" style="fill: var(--text-secondary); paint-order: stroke; stroke: var(--panel); stroke-width: 3px">${esc(s.name)}</text>`;
+  });
+  HOURS.forEach((h, i) => {
+    svg += `<rect class="hit" data-i="${i}" x="${CM.left + i * slot}" y="${CM.top}" width="${slot}" height="${ih}" fill="transparent"/>`;
+  });
+  cmpChart.classList.remove("chart-slot");
+  cmpChart.innerHTML = `<svg viewBox="0 0 ${CW} ${CH}" role="img"></svg><div class="chart-tip" hidden></div>`;
+  const svgEl = cmpChart.querySelector("svg");
+  svgEl.setAttribute("aria-label", `${nameA} · ${nameB} 시간대별 하루 평균 승차+하차 비교(전체 노선 합계)`);
+  svgEl.innerHTML = svg;
+
+  const tip = cmpChart.querySelector(".chart-tip");
+  const cross = svgEl.querySelector(".cross");
+  svgEl.addEventListener("pointermove", (e) => {
+    const i = e.target.dataset?.i;
+    if (i === undefined) {
+      tip.hidden = true;
+      return cross.setAttribute("visibility", "hidden");
+    }
+    cross.setAttribute("x1", x(i));
+    cross.setAttribute("x2", x(i));
+    cross.setAttribute("visibility", "visible");
+    tip.innerHTML = `${hourLabel(HOURS[i])}<br>${series.map((s) => `${esc(s.name)} <b>${fmt(s.values[i])}</b>명`).join("<br>")}`;
+    tip.hidden = false;
+    const box = cmpChart.getBoundingClientRect();
+    const left = e.clientX - box.left + 12;
+    tip.style.left = `${Math.max(0, Math.min(left, box.width - tip.offsetWidth))}px`;
+  });
+  svgEl.addEventListener("pointerleave", () => {
+    tip.hidden = true;
+    cross.setAttribute("visibility", "hidden");
+  });
+
+  // 요약: 하루 합계, 각 역 피크, 차이가 가장 큰 시간대
+  const times = c.totalA && c.totalB ? (c.totalA >= c.totalB ? c.totalA / c.totalB : c.totalB / c.totalA) : null;
+  const bigger = c.totalA >= c.totalB ? nameA : nameB;
+  const peakText = (s) => (s.peak < 0 ? `${esc(s.name)} 기록 없음` : `${esc(s.name)} ${hourLabel(HOURS[s.peak])}`);
+  let html = `하루 합계 ${esc(nameA)} <b>${fmt(c.totalA)}</b>명 · ${esc(nameB)} <b>${fmt(c.totalB)}</b>명`;
+  if (times && compareEntry !== selected.entry) html += ` (${esc(bigger)} 쪽이 ${times.toLocaleString("ko-KR", { maximumFractionDigits: 1 })}배)`;
+  html += `<br>가장 붐비는 때 ${series.map(peakText).join(", ")}`;
+  if (c.widest >= 0) html += `<br>차이가 가장 큰 때 ${hourLabel(HOURS[c.widest])}(<b>${fmt(Math.abs(a[c.widest] - b[c.widest]))}</b>명)`;
+  html += `<br>더 많은 시간대 ${esc(nameA)} ${c.moreA}개 · ${esc(nameB)} ${c.moreB}개`;
+  cmpSummary.innerHTML = html;
+
+  cmpTable.querySelector("table").innerHTML =
+    `<thead><tr><th scope="col">시간대</th><th scope="col">${esc(nameA)}</th><th scope="col">${esc(nameB)}</th></tr></thead><tbody>` +
+    HOURS.map((h, i) => `<tr><th scope="row">${hourLabel(h)}</th><td>${fmt(a[i])}</td><td>${fmt(b[i])}</td></tr>`).join("") +
+    `</tbody>`;
 }
 
 // ---- 로그인 · 내 즐겨찾기 · 붐빔 알림 ----
@@ -1051,6 +1274,7 @@ function render() {
   renderAnswer(row, win, quiet);
   renderBand(row, quiet);
   renderChart(row, win, quiet);
+  renderCompare(row);
   renderNearby();
   renderTop5();
   refreshMap();
@@ -1545,6 +1769,7 @@ Promise.all([fetchCsv(SUBWAY_CSV), fetchCsv(STATION_MASTER_CSV)])
         byLine: new Map(rows.filter((r) => r.STTN === merged.STTN && merged.LINES.includes(r.SBWY_ROUT_LN_NM)).map((r) => [r.SBWY_ROUT_LN_NM, r])),
         station: null, daily: HOURS.map((h) => total(merged, h) / days),
       };
+      entry.riders = entry.daily.reduce((a, v) => a + v, 0); // 검색에서 점수가 같으면 많은 역 먼저
       const at = coordOf(merged);
       if (at) {
         entry.station = { entry, name: merged.STTN, lines: merged.SBWY_ROUT_LN_NM, position: [at[1], at[0]], daily: entry.daily };
@@ -1622,6 +1847,7 @@ Promise.all([fetchCsv(SUBWAY_CSV), fetchCsv(STATION_MASTER_CSV)])
     refreshMap = () => deckgl.setProps({ layers: layers(Number(slider.value)) });
     renderTop5();
     showResults(); // 불러오는 동안 입력한 검색어가 있으면 결과를 보여 준다
+    openSharedCompare(); // ?compare=A,B로 열었으면 두 역을 고른다
     renderFavorites();
     pollTrains();
     fetchAreas()
