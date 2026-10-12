@@ -38,11 +38,14 @@
   - 대여 기준으로 골랐으므로 13일에 빌려 14일에 반납한 행은 들어 있고, 12일에 빌려 13일에 반납한 행은 없습니다.
   - 대여소 좌표는 이 파일에 없습니다(대여소 정보 파일이나 `bikeList` API의 `ST-` ID로 맞춰야 함).
   - 받은 주소: https://data.seoul.go.kr/dataList/OA-15182/F/1/datasetView.do
-  - **저장소에는 넣지 않습니다**(`.gitignore`). `생년`·`성별`·`이용자종류` 같은 이용자 정보 열이 있기 때문입니다. `bike.html`과 `tests/bike-trips.test.mjs`의 실제 데이터 테스트는 이 파일이 있어야 하며, 없으면 테스트는 건너뜁니다. 위 주소에서 6월분 CSV를 받아 같은 행을 골라 만듭니다.
+  - **저장소에는 넣지 않습니다**(`.gitignore`). `생년`·`성별`·`이용자종류` 같은 이용자 정보 열이 있기 때문입니다. `bike.html`은 이 파일 대신 아래 재생용 JSON을 읽고, `tests/bike-trips.test.mjs`의 원본 CSV 테스트는 파일이 없으면 건너뜁니다. 위 주소에서 6월분 CSV를 받아 같은 행을 골라 만듭니다.
     ```sh
     SRC="서울특별시 공공자전거 대여이력 정보_2606.csv"
     { head -n 1 "$SRC"; LC_ALL=C grep -a '^"[^"]*","2026-06-13 ' "$SRC"; } > data/bike/bike-rentals-20260613.csv
     ```
+- `data/bike/bike-trips-20260613.json` — 위 CSV에서 재생에 필요한 값만 뽑은 것(`npm run build:bike`, `scripts/build-bike-trips.mjs`, 약 2.9MB). 저장소에 넣습니다.
+  - 모양: `{ day, source, total, skipped, from, to, start, end }`. `from`·`to`·`start`·`end`는 길이가 같은 배열이고 i번째 값끼리 이동 하나입니다. `from`·`to`는 대여·반납 대여소 번호(좌표 JSON 키, 0 채움 없는 숫자), `start`·`end`는 2026-06-13 00:00(KST) 기준 초(다음 날 반납은 86400 이상). 순서는 CSV 순서 그대로입니다.
+  - 자전거번호·대여소명·거치대·이용시간·이용거리·생년·성별·이용자종류·대여소ID는 넣지 않습니다. 반납 대여소가 없거나 좌표가 없는 행은 빼고, 몇 행을 왜 뺐는지는 `total`·`skipped`에 남깁니다.
 - 출처: 서울특별시, 공공누리 제1유형(출처 표시).
 
 ## 보기

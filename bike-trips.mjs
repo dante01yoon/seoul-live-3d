@@ -1,8 +1,10 @@
 // 따릉이 하루(2026-06-13) 대여이력 전처리. 브라우저(bike.html)와 Node(테스트)가 함께 쓴다.
-// 원본(data/bike/)은 고치지 않고, 읽을 때 대여소 좌표를 붙여 이동(trip) 목록으로 바꾼다.
+// 원본 CSV(data/bike/, git에 없음)는 고치지 않고, scripts/build-bike-trips.mjs가 재생에 필요한 값만
+// 작은 JSON(BIKE_TRIPS_JSON)으로 뽑는다. 브라우저는 그 JSON에 대여소 좌표를 붙여 이동(trip) 목록으로 바꾼다.
 import { decodeCsv, parseCsv } from "./subway-csv.mjs";
 
 export const BIKE_CSV = "data/bike/bike-rentals-20260613.csv";
+export const BIKE_TRIPS_JSON = "data/bike/bike-trips-20260613.json";
 export const BIKE_COORDS = "data/bike/station-coords-202606.json";
 export const BIKE_DAY = "2026-06-13";
 
@@ -66,15 +68,46 @@ export function hourlyStarts(trips) {
   return counts;
 }
 
-// 브라우저용: 두 파일을 받아 이동 목록으로. total = CSV 데이터 행 수.
+// 원본 CSV 바이트 → 이동 목록. total = CSV 데이터 행 수.
+export function tripsFromCsv(buf, coords) {
+  const rows = parseCsv(decodeCsv(buf));
+  return { ...toTrips(rows, coords), total: rows.length };
+}
+
+// 이동 목록 → 재생용 JSON. 이용자 정보(생년·성별·이용자종류)와 재생에 쓰지 않는 값(자전거번호·
+// 대여소명·거치대·이용시간·이용거리)은 넣지 않는다. 열마다 배열 하나(i번째 값끼리 한 이동),
+// 대여소는 좌표 JSON 키를 숫자로, 시각은 BIKE_DAY 00:00(KST) 기준 초. 순서는 CSV 순서 그대로.
+export function toTripsJson({ trips, skipped, total }) {
+  return {
+    day: BIKE_DAY,
+    source: "서울특별시 공공자전거 대여이력 정보(2026년 6월) — 서울특별시, 공공누리 제1유형",
+    total,
+    skipped,
+    from: trips.map((t) => Number(t.fromNo)),
+    to: trips.map((t) => Number(t.toNo)),
+    start: trips.map((t) => t.start),
+    end: trips.map((t) => t.end),
+  };
+}
+
+// 재생용 JSON + 좌표 JSON → 이동 목록. 좌표 없는 행은 만들 때 이미 뺐다.
+export function fromTripsJson(data, coords) {
+  const trips = data.start.map((start, i) => {
+    const fromNo = String(data.from[i]), toNo = String(data.to[i]);
+    const a = coords[fromNo], b = coords[toNo];
+    if (!a || !b) throw new Error(`대여소 좌표 없음: ${a ? toNo : fromNo}`);
+    return { fromNo, toNo, from: [a.lng, a.lat], to: [b.lng, b.lat], start, end: data.end[i], round: fromNo === toNo };
+  });
+  return { trips, skipped: data.skipped, total: data.total };
+}
+
+// 브라우저용: 재생용 JSON과 좌표 JSON을 받아 이동 목록으로. coords는 대여소 점을 그릴 때도 쓴다.
 export async function loadBikeTrips(baseUrl = "") {
   const get = async (path) => {
     const res = await fetch(encodeURI(baseUrl + path));
     if (!res.ok) throw new Error(`${path}: ${res.status} ${res.statusText}`);
-    return res;
+    return res.json();
   };
-  const [csvRes, coordsRes] = await Promise.all([get(BIKE_CSV), get(BIKE_COORDS)]);
-  const rows = parseCsv(decodeCsv(await csvRes.arrayBuffer()));
-  const { trips, skipped } = toTrips(rows, await coordsRes.json());
-  return { trips, skipped, total: rows.length };
+  const [data, coords] = await Promise.all([get(BIKE_TRIPS_JSON), get(BIKE_COORDS)]);
+  return { ...fromTripsJson(data, coords), coords };
 }

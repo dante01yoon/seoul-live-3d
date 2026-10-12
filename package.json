@@ -6,7 +6,8 @@
     "start": "node server.mjs",
     "test": "node --test",
     "check": "node scripts/check-data.mjs",
-    "collect": "node scripts/collect-citydata.mjs"
+    "collect": "node scripts/collect-citydata.mjs",
+    "build:bike": "node scripts/build-bike-trips.mjs"
   },
   "devDependencies": {
     "supabase": "^2.101.0"

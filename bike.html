@@ -172,13 +172,7 @@ const TRIP_COLOR = [...cssRgb("--trip"), 230];
 const STAY_FILL = [...cssRgb("--stay"), 70], STAY_LINE = [...cssRgb("--stay"), 255];
 const STATION_FILL = [...cssRgb("--station"), 150];
 
-Promise.all([
-  loadBikeTrips(),
-  fetch("data/bike/station-coords-202606.json").then((r) => {
-    if (!r.ok) throw new Error(`대여소 좌표 ${r.status}`);
-    return r.json();
-  }),
-]).then(([{ trips, skipped, total }, coords]) => {
+loadBikeTrips().then(({ trips, skipped, total, coords }) => {
   // 요약: 데이터 품질(버린 행)을 숨기지 않는다.
   const skippedEntries = Object.entries(skipped ?? {});
   const skippedSum = skippedEntries.reduce((a, [, n]) => a + n, 0);
