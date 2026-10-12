@@ -2,13 +2,13 @@
 // Supabase에 쌓인 장소별 붐빔 기록(최근 24시간)을 읽는다. Vercel 환경 변수 SUPABASE_URL·SUPABASE_PUBLISHABLE_KEY(읽기 전용 공개 키).
 
 import { createCrowdHistory, isPlaceCode } from "../citydata-store.mjs";
-import { DB_DOWN_MESSAGE, isDbUnavailable } from "../db-status.mjs";
+import { DB_DOWN_MESSAGE, HISTORY_OFF_MESSAGE, isDbUnavailable } from "../db-status.mjs";
 
 const crowd = createCrowdHistory({ url: process.env.SUPABASE_URL, key: process.env.SUPABASE_PUBLISHABLE_KEY });
 
 export async function GET(request) {
   const code = new URL(request.url).searchParams.get("code");
-  if (!crowd.configured) return Response.json({ error: "붐빔 기록 DB가 설정되지 않았습니다" }, { status: 503 });
+  if (!crowd.configured) return Response.json({ error: HISTORY_OFF_MESSAGE, disabled: true }, { status: 503, headers: { "Cache-Control": "no-store" } });
   if (!isPlaceCode(code)) return Response.json({ error: "장소 코드가 아닙니다" }, { status: 400 });
   try {
     return Response.json(await crowd.history(code), {

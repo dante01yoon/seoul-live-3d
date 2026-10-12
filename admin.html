@@ -249,6 +249,7 @@ async function init() {
   try {
     const res = await fetch("api/config");
     const cfg = res.headers.get("content-type")?.includes("json") ? await res.json() : null;
+    if (cfg?.disabled) throw Object.assign(new Error(cfg.error), { disabled: true });
     if (!res.ok || !cfg) throw new Error(cfg?.error ?? (res.status === 404 ? "npm start로 연 서버에서만 됩니다" : `HTTP ${res.status}`));
     const { createClient } = await import(SUPABASE_JS);
     sb = createClient(cfg.supabaseUrl, cfg.supabaseKey);
@@ -256,7 +257,7 @@ async function init() {
     sb.auth.onAuthStateChange((_event, session) => setTimeout(() => setUser(session?.user ?? null)));
   } catch (err) {
     show(null);
-    say(`로그인을 쓸 수 없습니다: ${err.message}`);
+    say(err.disabled ? err.message : `로그인을 쓸 수 없습니다: ${err.message}`);
   }
 }
 

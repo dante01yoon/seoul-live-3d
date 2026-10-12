@@ -4,6 +4,11 @@
 
 export const DB_DOWN_MESSAGE = "지금 DB에 연결할 수 없습니다. 잠시 뒤 다시 시도해 주세요.";
 
+// DB 환경 변수가 아예 없는 배포(예: Supabase를 아직 붙이지 않은 Vercel 미리보기)에서 쓰는 안내.
+// 서버는 503 { error, disabled: true }로 답하고, 화면은 다시 시도 없이 이 문구만 보여 준다.
+export const LOGIN_OFF_MESSAGE = "이 배포에는 아직 DB가 연결되지 않아 로그인·즐겨찾기·알림이 꺼져 있습니다.";
+export const HISTORY_OFF_MESSAGE = "이 배포에는 아직 DB가 연결되지 않아 붐빔 기록을 볼 수 없습니다.";
+
 // 서버 쪽에서 "DB가 응답하지 않음"을 다른 오류와 구분하려고 던진다. server.mjs는 이걸 503 안내로 바꾼다.
 export class DbUnavailableError extends Error {
   name = "DbUnavailableError";

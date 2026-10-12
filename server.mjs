@@ -14,7 +14,7 @@ import { fileURLToPath } from "node:url";
 import { createTrainsSource } from "./realtime-trains.mjs";
 import { createCitydataSource } from "./realtime-citydata.mjs";
 import { createCrowdHistory, isPlaceCode } from "./citydata-store.mjs";
-import { DB_DOWN_MESSAGE, isDbUnavailable } from "./db-status.mjs";
+import { DB_DOWN_MESSAGE, HISTORY_OFF_MESSAGE, LOGIN_OFF_MESSAGE, isDbUnavailable } from "./db-status.mjs";
 
 const ROOT = fileURLToPath(new URL(".", import.meta.url));
 const PORT = Number(process.env.PORT ?? 8000);
@@ -70,10 +70,10 @@ createServer(async (req, res) => {
       res.writeHead(configured ? 200 : 503, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
       res.end(JSON.stringify(configured
         ? { supabaseUrl: process.env.SUPABASE_URL, supabaseKey: process.env.SUPABASE_PUBLISHABLE_KEY }
-        : { error: "로그인 DB가 설정되지 않았습니다" }));
+        : { error: LOGIN_OFF_MESSAGE, disabled: true }));
     } else if (pathname === "/api/crowd-history") {
       const code = new URL(req.url, `http://${HOST}`).searchParams.get("code");
-      const [status, data] = !crowd.configured ? [503, { error: "붐빔 기록 DB가 설정되지 않았습니다" }]
+      const [status, data] = !crowd.configured ? [503, { error: HISTORY_OFF_MESSAGE, disabled: true }]
         : !isPlaceCode(code) ? [400, { error: "장소 코드가 아닙니다" }]
         : await crowd.history(code).then((d) => [200, d], (err) => {
           if (!isDbUnavailable(err)) throw err;

@@ -796,6 +796,7 @@ async function initAuth() {
   try {
     const res = await fetch("api/config");
     const cfg = res.headers.get("content-type")?.includes("json") ? await res.json() : null;
+    if (cfg?.disabled) throw Object.assign(new Error(cfg.error), { disabled: true });
     if (!res.ok || !cfg) throw new Error(cfg?.error ?? (res.status === 404 ? "npm start로 연 서버에서만 됩니다" : `HTTP ${res.status}`));
     const { createClient } = await import(SUPABASE_JS);
     sb = createClient(cfg.supabaseUrl, cfg.supabaseKey);
@@ -803,7 +804,7 @@ async function initAuth() {
     sb.auth.onAuthStateChange((_event, session) => setTimeout(() => setUser(session?.user ?? null)));
   } catch (err) {
     showAuth(null);
-    say(`로그인을 쓸 수 없습니다: ${err.message}`);
+    say(err.disabled ? err.message : `로그인을 쓸 수 없습니다: ${err.message}`);
   }
 }
 
@@ -1307,6 +1308,7 @@ async function loadHistory() {
     const res = await fetch(`api/crowd-history?code=${encodeURIComponent(area.code)}`);
     const body = res.headers.get("content-type")?.includes("json") ? await res.json() : null;
     if (!res.ok || !body) {
+      if (body?.disabled) throw Object.assign(new Error(body.error), { disabled: true });
       if (res.status >= 500) throw Object.assign(new Error(body?.error ?? DB_DOWN_MESSAGE), { retry: true });
       throw new Error(body?.error ?? (res.status === 404 ? "npm start로 연 서버에서만 보입니다" : `HTTP ${res.status}`));
     }
@@ -1319,7 +1321,9 @@ async function loadHistory() {
     const retry = err.retry || err instanceof TypeError;
     const msg = document.createElement("p");
     msg.className = "history-error";
-    msg.textContent = retry ? `붐빔 기록을 불러오지 못했습니다. ${err instanceof TypeError ? "서버에 연결할 수 없습니다. 잠시 뒤 다시 시도해 주세요." : err.message}`
+    // DB가 없는 배포면 다시 시도해도 소용없으니 안내만 보인다.
+    msg.textContent = err.disabled ? err.message
+      : retry ? `붐빔 기록을 불러오지 못했습니다. ${err instanceof TypeError ? "서버에 연결할 수 없습니다. 잠시 뒤 다시 시도해 주세요." : err.message}`
       : `기록을 불러오지 못했습니다: ${err.message}`;
     historyChart.replaceChildren(msg);
     if (retry) {
