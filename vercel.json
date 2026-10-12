@@ -3,5 +3,8 @@
   "framework": null,
   "buildCommand": "",
   "installCommand": "",
-  "outputDirectory": "."
+  "outputDirectory": ".",
+  "functions": {
+    "api/citydata.js": { "includeFiles": "data/raw/citydata/*.zip" }
+  }
 }

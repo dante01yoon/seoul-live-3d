@@ -6,3 +6,6 @@ tests/
 tools/
 docs/
 scripts/
+# npm 의존성(supabase CLI)과 로컬 Supabase 설정·마이그레이션·seed(테스트 사용자)는 배포에 필요 없고, 정적 파일로 공개되면 안 된다.
+node_modules/
+supabase/
