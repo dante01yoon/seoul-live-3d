@@ -31,6 +31,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `subway.html`의 도시데이터 레이어: 영역을 추정 인구(범위의 가운데)만큼 솟게(`PolygonLayer`), 색은 혼잡도 4단계(`--congest-1`…`--congest-4`), 예측 슬라이더 0 = 지금, 1–12 = 시간 뒤. 레이어가 보이면 승하차 기둥은 흐리게(`CITY_ON_ALPHA`) 그린다.
 - `nearby-places.mjs`: 역 좌표에서 도시데이터 영역 경계까지 거리(m, 안이면 0)를 재서 `NEARBY_RADIUS_M`(500m) 안의 장소를 가까운 순으로 `NEARBY_LIMIT`(3)곳까지 고른다(`nearbyAreas`). `subway.html` 답 카드의 「가까운 장소 · 지금 혼잡도」(`renderNearby`)가 쓰고, 누르면 `selectPlace`로 붐빔 기록을 연다.
 - `train-positions.mjs`: API 열차 행 → 지도 좌표(`placeTrain`). API `statnId`는 역사_ID와 체계가 달라 역 이름(`stopKey`, 괄호 부역명 제거)으로 맞추고, 방향은 종착역 쪽(지선 너머면 갈라지는 역 쪽)으로 정한다. API 역 이름이 다르면 `API_NAME_ALIASES`에 넣는다.
+- `mcp-server/`: 공식 TypeScript SDK로 만든 MCP 서버(자체 `package.json`, 빌드 없음). 도구 `get_station_hourly`(9월 CSV 역별 시간대 승하차)·`get_station_hourly_api`(CardSubwayTime, 달 지정)·`get_place_crowd`(citydata_ppltn, 121장소), 리소스 `stations://list`·`places://list`는 `src/server.ts`의 `createServer`에 있고(API 호출은 `src/openapi.ts`, 키는 `.mcp.json`의 env로 넘기는 `SEOUL_OPENAPI_KEY`, 없으면 `sample`), 전송만 따로 붙인다: stdio는 `npm start`(`src/index.ts`), Streamable HTTP는 `npm run start:http`(`src/http.ts`, http://127.0.0.1:18610/mcp, 세션 없이 요청마다 서버 생성, POST만, Host 헤더 검사). Node가 `.ts`를 바로 실행하므로 import 경로는 `.ts`로 쓴다(tsconfig `allowImportingTsExtensions`). 루트의 `subway-csv.mjs`·`stats.mjs`를 import한다. stdio는 stdout이 MCP 전용이라 로그는 `console.error`로.
 - 시간대 순서는 04시부터 다음 날 03시까지(`HOURS = (i + 4) % 24`). 승하차가 0명인 시간대(02·03시)는 운행하지 않는 때로 보고 "가장 한가한 때" 후보에서 뺀다.
 
 ## 데이터
