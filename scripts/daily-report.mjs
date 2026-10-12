@@ -14,7 +14,7 @@ import { tmpdir } from "node:os";
 import { CITYDATA_AREAS_ZIP, parseAreasZip } from "../citydata-areas.mjs";
 import { areaCodesFromZip, createCitydataSource } from "../realtime-citydata.mjs";
 import { createBikeSource } from "../realtime-bikes.mjs";
-import { REPORT_SCHEMA, parseClaudeResult, previousDate, reportDiff, reportFacts, reportPrompt, upsertIndex } from "../daily-report.mjs";
+import { REPORT_SCHEMA, checkVisitBest, parseClaudeResult, previousDate, reportDiff, reportFacts, reportPrompt, upsertIndex } from "../daily-report.mjs";
 
 const childEnv = { ...process.env };
 try {
@@ -85,7 +85,9 @@ if (useClaude) {
   try {
     const started = Date.now();
     const { summary: s, model, costUsd } = await runClaude(reportPrompt(facts, diff));
-    summary = s;
+    const checked = checkVisitBest(s.visit, facts.visit);
+    if (checked.dropped.length) console.warn(`낮 시간 후보가 아닌 추천 시각을 뺐습니다: ${checked.dropped.join(", ")}`);
+    summary = { ...s, visit: checked.visit };
     meta = { model, costUsd, seconds: Math.round((Date.now() - started) / 1000) };
     console.log(`요약 받음(${model ?? "모델 모름"}, ${meta.seconds}초${costUsd != null ? `, $${costUsd.toFixed(4)}` : ""})`);
   } catch (err) {

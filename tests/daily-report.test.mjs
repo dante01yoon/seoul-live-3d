@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { VISIT_PLACE, kstDate, parseClaudeResult, previousDate, reportDiff, reportFacts, reportPrompt, upsertIndex } from "../daily-report.mjs";
+import { VISIT_PLACE, checkVisitBest, kstDate, parseClaudeResult, previousDate, reportDiff, reportFacts, reportPrompt, upsertIndex } from "../daily-report.mjs";
 import { toBikeStation } from "../realtime-bikes.mjs";
 
 const area = (code, level, min, max, forecast = []) => ({ code, name: `장소${code}`, now: { time: "2026-10-12 08:00", level, min, max }, forecast });
@@ -171,12 +171,35 @@ test("광화문·덕수궁의 지금 값과 오늘 안의 예측만 visit에 넣
     now: { time: "21:50", level: "여유", population: { min: 3000, max: 3500 } },
     // 다음 날(00:00)은 오늘이 아니라 뺀다.
     forecast: [{ time: "22:00", level: "여유", population: { min: 2000, max: 2500 } }, { time: "23:00", level: "보통", population: null }],
+    hours: { from: "10:00", to: "18:00" },
+    // 밤이라 낮 시간 후보가 없다(아직 예측 없음).
+    candidates: [],
   });
   const prompt = reportPrompt(facts);
-  assert.match(prompt, /visit\.best는 visit\.now·visit\.forecast의 시각 중에서만/);
+  assert.match(prompt, /visit\.best는 visit\.candidates의 시각 중에서만/);
+  assert.match(prompt, /아직 예측 없음/);
   assert.deepEqual(JSON.parse(prompt.slice(prompt.lastIndexOf("\n") + 1)).visit, facts.visit);
 
   // 그 장소가 없거나 도시데이터를 받지 못했으면 error.
   assert.deepEqual(reportFacts({ citydata: { ...citydata, areas: [] }, bikes: null }).visit, { name: VISIT_PLACE, error: "받지 못함" });
   assert.deepEqual(reportFacts({ citydata: { error: "HTTP 500" }, bikes: null }).visit, { name: VISIT_PLACE, error: "HTTP 500" });
+});
+
+test("추천 후보는 낮 시간(10:00~18:00, 양 끝 포함)만이고, 후보 밖의 추천 시각은 버린다", () => {
+  const f = (time, level) => ({ time, level, min: 1000, max: 1500 });
+  const gwanghwamun = {
+    code: "POI009",
+    name: VISIT_PLACE,
+    now: { time: "2026-10-13 06:00", level: "여유", min: 4500, max: 5000 },
+    forecast: [f("2026-10-13 09:00", "여유"), f("2026-10-13 10:00", "보통"), f("2026-10-13 14:00", "약간 붐빔"), f("2026-10-13 18:00", "보통"), f("2026-10-13 19:00", "여유")],
+  };
+  const { visit } = reportFacts({ citydata: { sample: true, areas: [gwanghwamun], errors: [] }, bikes: null, now: new Date("2026-10-12T21:00:00Z") });
+  assert.deepEqual(visit.candidates.map((c) => c.time), ["10:00", "14:00", "18:00"]);
+  assert.deepEqual(visit.candidates[0], { time: "10:00", level: "보통", population: { min: 1000, max: 1500 } });
+
+  const picked = { summary: "s", best: [{ time: "06:00", note: "여유" }, { time: "10:00", note: "보통, 1,000~1,500명" }, { time: "12:00", note: "없는 시각" }], avoid: "" };
+  const { visit: checked, dropped } = checkVisitBest(picked, visit);
+  assert.deepEqual(checked.best.map((b) => b.time), ["10:00"]);
+  assert.deepEqual(dropped, ["06:00", "12:00"]);
+  assert.deepEqual(checkVisitBest(null, visit), { visit: null, dropped: [] });
 });

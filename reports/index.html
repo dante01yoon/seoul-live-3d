@@ -56,6 +56,7 @@
   .slots { display: grid; grid-template-columns: repeat(auto-fill, minmax(92px, 1fr)); gap: 6px; list-style: none; padding: 0; margin: 8px 0; }
   .slot { border: 1px solid var(--border); border-top: 4px solid var(--congest-none); border-radius: 8px; padding: 4px 6px; font-size: .8rem; color: var(--text-secondary); }
   .slot b { display: block; font-size: .95rem; color: var(--text-primary); }
+  .slot.off { opacity: .45; }
   .slot.pick { outline: 2px solid var(--answer); outline-offset: 1px; }
   .slot.pick b::after { content: " 추천"; font-size: .75rem; font-weight: normal; color: var(--answer); }
   .warn { border-left: 4px solid var(--congest-3); padding-left: 8px; color: var(--text-secondary); }
@@ -132,16 +133,20 @@ function diffHtml(d, s) {
 }
 
 // 오늘 VISIT_PLACE 가기 좋은 시각: 지금과 예측을 시각 칸으로 늘어놓고, claude가 고른 시각(summary.visit.best)에 테두리를 친다.
+// 낮 시간(v.hours) 밖의 칸은 흐리게 그린다(추천 후보가 아니다). hours가 없는 옛 리포트는 모두 보통으로.
 function visitHtml(v, s) {
   if (!v) return "";
   const title = `오늘 ${esc(v.name)} 가기 좋은 시각`;
   if (v.error) return `<section class="visit"><h2>${title}</h2><p class="warn">받지 못했습니다: ${esc(v.error)}</p></section>`;
   const best = s?.visit?.best ?? [];
   const picks = new Set(best.map((b) => b.time));
-  const slot = (x, label) => `<li class="slot${picks.has(x.time) ? " pick" : ""}" style="border-top-color:var(${congestCss(x.level)})">
+  const off = (x) => v.hours && !(x.time >= v.hours.from && x.time <= v.hours.to);
+  const slot = (x, label) => `<li class="slot${picks.has(x.time) ? " pick" : ""}${off(x) ? " off" : ""}" style="border-top-color:var(${congestCss(x.level)})">
     <b>${esc(x.time ?? "–")}</b>${label ? `<small>${label} · </small>` : ""}${esc(x.level)}<br><small>${x.population ? `${fmt(x.population.min)}~${fmt(x.population.max)}` : "–"}</small></li>`;
   return `<section class="visit">
     <h2>${title}</h2>
+    ${v.hours ? `<p class="muted">추천은 낮 시간 ${esc(v.hours.from)}~${esc(v.hours.to)} 안에서만 고릅니다.</p>` : ""}
+    ${v.candidates && !v.candidates.length ? `<p class="warn">아직 예측 없음 — 오늘 낮 시간 예측이 아직 나오지 않았습니다.</p>` : ""}
     ${s?.visit ? `<p>${esc(s.visit.summary)}</p>` : ""}
     ${best.length ? `<ul>${best.map((b) => `<li><b>${esc(b.time)}</b> — ${esc(b.note)}</li>`).join("")}</ul>` : ""}
     ${s?.visit?.avoid ? `<p class="muted">${esc(s.visit.avoid)}</p>` : ""}
