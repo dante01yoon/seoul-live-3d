@@ -67,6 +67,22 @@
           background: transparent; color: var(--text-secondary); font-size: 13px; cursor: pointer; }
   .chip[aria-pressed="true"] { background: var(--text-primary); border-color: var(--text-primary); color: var(--surface); font-weight: 600; }
 
+  /* 지금 시간대 혼잡 TOP 5 */
+  .top5-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; margin-top: 4px;
+               font-size: 13px; font-weight: 600; color: var(--text-secondary); }
+  .top5-head output { font-size: 12px; font-weight: 400; color: var(--text-muted); font-variant-numeric: tabular-nums; }
+  .top5 { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; }
+  .top5 button { width: 100%; min-height: 44px; padding: 6px 10px; display: grid; grid-template-columns: 1.5em minmax(0, 1fr) auto;
+                 align-items: center; gap: 8px; border: 1px solid transparent; border-radius: 8px; background: transparent;
+                 text-align: left; cursor: pointer; }
+  .top5 button:hover, .top5 button:focus-visible { background: var(--grid); }
+  .top5 button[aria-current="true"] { border-color: var(--answer); }
+  .top5 .rank { font-weight: 700; color: var(--answer); font-variant-numeric: tabular-nums; }
+  .top5 .name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .top5 .name small { margin-left: 6px; color: var(--text-muted); font-size: 12px; }
+  .top5 .empty { padding: 10px; font-size: 13px; color: var(--text-muted); }
+  .top5 .count { font-size: 13px; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+
   /* 시간 창 */
   .presets { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; }
   .preset { min-height: 52px; display: flex; flex-direction: column; align-items: flex-start; justify-content: center; gap: 2px;
@@ -195,6 +211,8 @@
         <input id="q" class="search" type="search" placeholder="역 이름 일부 (예: 가산)" autocomplete="off">
         <ul class="results" id="results" aria-label="검색 결과"></ul>
         <div class="chips" id="lines" role="group" aria-label="노선"></div>
+        <div class="top5-head"><span id="top5-title">지금 시간대 혼잡 TOP 5</span><output id="top5-hour" for="hour"></output></div>
+        <ol class="top5" id="top5" aria-labelledby="top5-title"></ol>
       </section>
 
       <section class="panel">
@@ -344,6 +362,7 @@ const showHour = () => {
   const i = Number(slider.value);
   output.textContent = hourLabel(HOURS[i]);
   [...ticks.children].forEach((t, j) => t.classList.toggle("current", j === i));
+  renderTop5();
   refreshMap();
 };
 slider.addEventListener("input", () => {
@@ -440,6 +459,49 @@ q.addEventListener("keydown", (ev) => {
     results.replaceChildren();
   }
 });
+
+// ---- 지금 시간대 혼잡 TOP 5 ----
+// 슬라이더 시간대에 하루 평균 승차+하차가 가장 많은 역 5곳. 누르면 그 역을 고른다.
+// 재생 중에도 포커스가 사라지지 않게 버튼 5개는 한 번만 만들고 글자만 바꾼다.
+const TOP_N = 5;
+const top5El = document.getElementById("top5");
+const top5Hour = document.getElementById("top5-hour");
+const top5Buttons = Array.from({ length: TOP_N }, () => {
+  const li = document.createElement("li");
+  const b = document.createElement("button");
+  b.type = "button";
+  li.hidden = true;
+  b.innerHTML = `<span class="rank"></span><span class="name"><span></span><small></small></span><span class="count"></span>`;
+  b.addEventListener("click", () => b.entry && selectEntry(b.entry));
+  li.append(b);
+  top5El.append(li);
+  return b;
+});
+const top5Empty = document.createElement("li");
+top5Empty.className = "empty";
+top5Empty.textContent = "이 시간대는 열차가 거의 다니지 않아 승하차가 하루 1명도 안 됩니다.";
+top5Empty.hidden = true;
+top5El.append(top5Empty);
+function renderTop5() {
+  const i = Number(slider.value);
+  top5Hour.textContent = hourLabel(HOURS[i]);
+  // 02·03시대처럼 한 달에 몇 명뿐인 시간대는 "0명"으로 보이므로 하루 평균 0.5명(반올림 1명) 미만은 뺀다.
+  const top = entries.filter((e) => e.daily[i] >= 0.5).sort((a, b) => b.daily[i] - a.daily[i]).slice(0, TOP_N);
+  top5Empty.hidden = top.length > 0 || !entries.length;
+  top5Buttons.forEach((b, k) => {
+    const e = top[k];
+    b.parentElement.hidden = !e;
+    b.entry = e ?? null;
+    if (!e) return;
+    const [rank, name, count] = b.children;
+    rank.textContent = k + 1;
+    name.firstChild.textContent = e.name;
+    name.lastChild.textContent = e.lines.join("·");
+    count.textContent = `${fmt(e.daily[i])}명`;
+    b.setAttribute("aria-label", `${k + 1}위 ${e.name} ${e.lines.join("·")}, ${hourLabel(HOURS[i])} 하루 평균 ${fmt(e.daily[i])}명, 고르기`);
+    b.setAttribute("aria-current", String(e === selected?.entry));
+  });
+}
 
 function selectEntry(entry) {
   selected = { entry, line: null };
@@ -575,6 +637,7 @@ function render() {
   renderAnswer(row, win, quiet);
   renderBand(row, quiet);
   renderChart(row, win, quiet);
+  renderTop5();
   refreshMap();
 }
 render();
@@ -721,11 +784,11 @@ Promise.all([fetchCsv(SUBWAY_CSV), fetchCsv(STATION_MASTER_CSV)])
       const entry = {
         id: entries.length, name: merged.STTN, lines: merged.LINES, merged,
         byLine: new Map(rows.filter((r) => r.STTN === merged.STTN && merged.LINES.includes(r.SBWY_ROUT_LN_NM)).map((r) => [r.SBWY_ROUT_LN_NM, r])),
-        station: null,
+        station: null, daily: HOURS.map((h) => total(merged, h) / days),
       };
       const at = coordOf(merged);
       if (at) {
-        entry.station = { entry, name: merged.STTN, lines: merged.SBWY_ROUT_LN_NM, position: [at[1], at[0]], daily: HOURS.map((h) => total(merged, h) / days) };
+        entry.station = { entry, name: merged.STTN, lines: merged.SBWY_ROUT_LN_NM, position: [at[1], at[0]], daily: entry.daily };
         stations.push(entry.station);
       } else {
         console.warn("좌표가 없어 3D에서 뺀 역", merged.STTN);
@@ -781,6 +844,7 @@ Promise.all([fetchCsv(SUBWAY_CSV), fetchCsv(STATION_MASTER_CSV)])
       },
     });
     refreshMap = () => deckgl.setProps({ layers: layers(Number(slider.value)) });
+    renderTop5();
     showResults(); // 불러오는 동안 입력한 검색어가 있으면 결과를 보여 준다
     pollTrains();
   })
