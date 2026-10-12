@@ -5,3 +5,6 @@
 !.env.example
 .claude/worktrees/
 data/bike/bike-rentals-*.csv
+# 아침 리포트(npm run report)가 만든 파일. 보기 화면(reports/index.html)만 넣는다.
+reports/*.json
+reports/.*.tmp
