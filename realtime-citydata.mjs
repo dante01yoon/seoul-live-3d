@@ -3,15 +3,14 @@
 // 돌려주는 값과 오류 문구에는 키가 들어가지 않는다.
 
 import { readFile } from "node:fs/promises";
-import { CITYDATA_AREAS_ZIP, parseAreasZip } from "./citydata-areas.mjs";
+import { CITYDATA_AREAS_ZIP, CONGEST_LEVELS, parseAreasZip } from "./citydata-areas.mjs";
 
 // API는 5분마다 갱신된다. 여러 사람이 열어도 이 간격에 한 번만 121곳을 묻는다.
 export const CITYDATA_CACHE_MS = 5 * 60_000;
 // 한 번에 동시에 보내는 요청 수(121곳을 이 개수씩 나눠 묻는다).
 const CONCURRENCY = 8;
 
-// 혼잡도 단계(덜 붐빔 → 붐빔). 화면 색과 범례도 이 순서를 쓴다.
-export const CONGEST_LEVELS = ["여유", "보통", "약간 붐빔", "붐빔"];
+export { CONGEST_LEVELS };
 
 const toNum = (v) => (v === undefined || v === null || v === "" ? null : Number(v));
 

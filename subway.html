@@ -186,6 +186,44 @@
   .chart .hist-line { fill: none; stroke: var(--text-primary); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
   .chart .hist-band { fill: var(--bar); opacity: 0.45; }
 
+  /* 로그인·내 즐겨찾기·붐빔 알림 */
+  .auth-form { display: flex; gap: 8px; }
+  .auth-form[hidden] { display: none; }
+  .auth-form input { flex: 1; min-width: 0; height: 44px; padding: 0 12px; background: var(--surface); border: 1px solid var(--border);
+                     border-radius: 10px; font-size: 15px; }
+  .btn { flex: none; min-height: 44px; padding: 0 14px; border-radius: 10px; border: 1px solid var(--border);
+         background: var(--text-primary); color: var(--surface); font-weight: 600; cursor: pointer; }
+  .btn.ghost { background: transparent; color: var(--text-secondary); font-weight: 400; }
+  .btn:disabled { opacity: 0.5; cursor: default; }
+  .auth-msg { margin: 0; font-size: 12px; line-height: 1.5; color: var(--text-secondary); }
+  .auth-msg:empty { display: none; }
+  .who { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 13px; color: var(--text-secondary); }
+  .who span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .who[hidden], .fav-body[hidden] { display: none; }
+  .fav-body { display: flex; flex-direction: column; gap: 10px; }
+  .fav-body h3 { margin: 0; font-size: 12px; font-weight: 600; color: var(--text-muted); }
+  .favs { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+  .favs li { display: grid; grid-template-columns: minmax(0, 1fr) auto 36px; align-items: center; gap: 6px; }
+  .favs .go { min-height: 40px; padding: 0 8px; border: 0; border-radius: 8px; background: transparent; text-align: left; cursor: pointer;
+              overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .favs .go:hover, .favs .go:focus-visible { background: var(--grid); }
+  .favs select { height: 36px; max-width: 9.5em; background: var(--surface); border: 1px solid var(--border); border-radius: 8px;
+                 padding: 0 4px; font-size: 12px; }
+  .favs .x { width: 36px; height: 36px; border-radius: 8px; border: 1px solid var(--border); background: transparent;
+             color: var(--text-muted); cursor: pointer; }
+  .favs .empty { display: block; padding: 4px 8px; font-size: 12px; color: var(--text-muted); }
+  .alerts { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+  .alerts li { padding: 8px 10px; border-radius: 8px; border-left: 4px solid var(--congest-4); background: var(--surface);
+               font-size: 13px; line-height: 1.5; }
+  .alerts li small { color: var(--text-muted); }
+  .alerts .calm { border-left-color: var(--congest-1); color: var(--text-secondary); }
+  .star { flex: none; min-height: 36px; padding: 0 10px; border-radius: 999px; border: 1px solid var(--border); background: transparent;
+          color: var(--text-secondary); font-size: 13px; cursor: pointer; white-space: nowrap; }
+  .star[aria-pressed="true"] { border-color: var(--answer); color: var(--answer); }
+  .star[hidden] { display: none; }
+  .answer-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
+  .history-head .tools { display: flex; gap: 6px; align-items: center; }
+
   /* 시간 슬라이더 */
   .timeline { flex-direction: row; align-items: center; gap: 14px; }
   .play { flex: none; width: 44px; height: 44px; border-radius: 50%; border: 0; background: var(--text-primary); color: var(--surface);
@@ -242,6 +280,33 @@
         <ol class="top5" id="top5" aria-labelledby="top5-title"></ol>
       </section>
 
+      <section class="panel" id="account">
+        <div class="panel-head">
+          <h2>내 즐겨찾기 · 붐빔 알림</h2>
+          <small>이 페이지가 열려 있는 동안 알림</small>
+        </div>
+        <p class="auth-msg" id="auth-msg">로그인 설정을 확인하는 중…</p>
+        <form class="auth-form" id="email-form" hidden>
+          <input id="email" type="email" required autocomplete="email" placeholder="이메일" aria-label="이메일">
+          <button type="submit" class="btn" aria-label="로그인 코드 받기">코드 받기</button>
+        </form>
+        <form class="auth-form" id="code-form" hidden>
+          <input id="code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]{6}" maxlength="6" required placeholder="6자리 코드" aria-label="메일로 받은 6자리 코드">
+          <button type="submit" class="btn" aria-label="코드로 로그인">로그인</button>
+          <button type="button" class="btn ghost" id="code-back" aria-label="이메일 다시 입력">다시</button>
+        </form>
+        <div class="who" id="who" hidden><span id="who-email"></span>
+          <button type="button" class="btn ghost" id="logout" aria-label="로그아웃">로그아웃</button></div>
+        <div class="fav-body" id="fav-body" hidden>
+          <ul class="alerts" id="alerts" aria-live="polite" aria-label="붐빔 알림"></ul>
+          <button type="button" class="btn ghost" id="notify-perm" hidden aria-label="브라우저 알림 켜기">브라우저 알림 켜기</button>
+          <h3>내 역 <span class="muted">· 지금 시간대가 평소 피크의 몇 % 이상이면</span></h3>
+          <ul class="favs" id="fav-stations"></ul>
+          <h3>장소 <span class="muted">· 실시간 혼잡도가 이 단계 이상이면</span></h3>
+          <ul class="favs" id="fav-places"></ul>
+        </div>
+      </section>
+
       <section class="panel">
         <h2>언제 움직일 수 있나요</h2>
         <div class="presets" role="group" aria-label="시간 창">
@@ -258,7 +323,8 @@
       </section>
 
       <section class="panel answer" id="answer" aria-live="polite">
-        <div><span class="station">역을 골라 주세요</span><span class="line"></span></div>
+        <div class="answer-head"><div><span class="station">역을 골라 주세요</span><span class="line"></span></div>
+          <button type="button" class="star" id="fav-station" hidden aria-pressed="false" aria-label="이 역 즐겨찾기">☆ 내 역</button></div>
         <div class="window">낮 · 10–15시대 중에서</div>
         <div class="hour">—</div>
         <div class="detail">역을 고르면 이 시간 창에서 가장 한가한 시간대를 알려 드립니다.</div>
@@ -335,7 +401,10 @@
       <section class="panel" id="history-panel" hidden aria-live="polite">
         <div class="history-head">
           <h2><span id="history-name"></span><small id="history-sub"></small></h2>
-          <button type="button" class="icon-btn" id="history-close" aria-label="붐빔 기록 닫기">✕</button>
+          <div class="tools">
+            <button type="button" class="star" id="fav-place" aria-pressed="false" aria-label="이 장소 즐겨찾기">☆ 즐겨찾기</button>
+            <button type="button" class="icon-btn" id="history-close" aria-label="붐빔 기록 닫기">✕</button>
+          </div>
         </div>
         <div class="chart chart-slot" id="history-chart">불러오는 중…</div>
         <p class="history-note" id="history-note"></p>
@@ -358,11 +427,13 @@
 <script type="module">
 // 역 검색 → 답 카드·하루 띠·2D 차트, 그리고 3D 지도(deck.gl)와 시간 재생. 지도 기둥을 눌러도 역이 골라진다.
 // 실시간 열차 위치(/api/trains)와 실시간 도시데이터(/api/citydata)는 server.mjs가 인증키를 붙여 받아 온다. 브라우저에는 키가 없다.
+// 로그인(이메일 6자리 코드)과 즐겨찾기는 Supabase에 바로 붙는다. 주소와 publishable 키는 /api/config로 받고, 남의 행은 RLS가 막는다.
 import { HOURS, total, usageMonth, quietestInWindow, peakRatio, WINDOW_PRESETS, DEFAULT_WINDOW_ID } from "./stats.mjs";
 import { SUBWAY_CSV, STATION_MASTER_CSV, fetchCsv, toSubwayRows, mergeStations, stationLocator } from "./subway-csv.mjs";
 import { SUBWAY_LINES, DUPLICATE_STATIONS, parseStop } from "./subway-lines.mjs";
 import { lineGeometry, placeTrain } from "./train-positions.mjs";
 import { fetchAreas } from "./citydata-areas.mjs";
+import { PLACE_ALERT_LEVELS, STATION_ALERT_RATIOS, activeAlerts, kstHour, newAlerts } from "./alerts.mjs";
 
 const pad = (h) => String(h).padStart(2, "0");
 const hourLabel = (h) => `${pad(h)}시대`;
@@ -390,6 +461,7 @@ winEnd.value = HOURS.indexOf(defaultHours.at(-1));
 
 // ---- 상태 ----
 let entries = [];       // 역 검색 항목(환승역은 합친 행 하나). { id, name, lines, merged, byLine, station }
+const entryByName = new Map(); // 역명 → entries 항목(즐겨찾기 역은 역명으로 가리킨다)
 let selected = null;    // { entry, line } — line이 null이면 노선 합산
 let windowId = DEFAULT_WINDOW_ID;
 let days = 30;          // 기준 달의 일수
@@ -683,6 +755,256 @@ function renderChart(row, win, quiet) {
   svgEl.addEventListener("pointerleave", () => (tip.hidden = true));
 }
 
+// ---- 로그인 · 내 즐겨찾기 · 붐빔 알림 ----
+// 로그인은 Supabase Auth 이메일 OTP(메일로 온 6자리 코드). 즐겨찾기는 favorites(장소)·favorite_stations(역)에 본인 행만 읽고 쓴다.
+// 알림 판단은 alerts.mjs가 한다. 이 페이지가 열려 있는 동안 ALERT_MS마다(장소는 도시데이터를 새로 받을 때도) 확인하고,
+// 붐비지 않다가 붐비게 된 곳만 브라우저 알림을 띄운다. 지금 붐비는 곳은 패널에 늘 보인다.
+const SUPABASE_JS = "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/+esm";
+const ALERT_MS = 60_000;
+const authMsg = document.getElementById("auth-msg");
+const emailForm = document.getElementById("email-form");
+const codeForm = document.getElementById("code-form");
+const emailInput = document.getElementById("email");
+const codeInput = document.getElementById("code");
+const whoEl = document.getElementById("who");
+const favBody = document.getElementById("fav-body");
+const alertsEl = document.getElementById("alerts");
+const notifyPerm = document.getElementById("notify-perm");
+const favStationBtn = document.getElementById("fav-station");
+const favPlaceBtn = document.getElementById("fav-place");
+let sb = null;     // Supabase 클라이언트
+let user = null;
+let favs = { places: [], stations: [] }; // places: { place_code, notify_level, name }, stations: { station_name, notify_ratio }
+let alertKeys = null; // 지난 확인에서 울리던 알림 key. null이면 아직 기준점을 잡지 않았다
+let alertTimer = null;
+
+const placeAlertsOn = () => Boolean(user && favs.places.some((f) => f.notify_level));
+const say = (text) => (authMsg.textContent = text);
+
+function showAuth(step) {
+  emailForm.hidden = step !== "email";
+  codeForm.hidden = step !== "code";
+  whoEl.hidden = step !== "in";
+  favBody.hidden = step !== "in";
+}
+
+async function initAuth() {
+  try {
+    const res = await fetch("api/config");
+    const cfg = res.headers.get("content-type")?.includes("json") ? await res.json() : null;
+    if (!res.ok || !cfg) throw new Error(cfg?.error ?? (res.status === 404 ? "npm start로 연 서버에서만 됩니다" : `HTTP ${res.status}`));
+    const { createClient } = await import(SUPABASE_JS);
+    sb = createClient(cfg.supabaseUrl, cfg.supabaseKey);
+    // 콜백 안에서 바로 Supabase를 부르면 세션 잠금에 걸릴 수 있어 한 박자 늦춘다.
+    sb.auth.onAuthStateChange((_event, session) => setTimeout(() => setUser(session?.user ?? null)));
+  } catch (err) {
+    showAuth(null);
+    say(`로그인을 쓸 수 없습니다: ${err.message}`);
+  }
+}
+
+let authReady = false; // 첫 세션 확인(INITIAL_SESSION)을 받았는지
+async function setUser(next) {
+  // 토큰 갱신처럼 같은 사용자로 다시 오는 알림은 건너뛴다.
+  if (authReady && (next?.id ?? null) === (user?.id ?? null)) return;
+  authReady = true;
+  user = next;
+  favs = { places: [], stations: [] };
+  alertKeys = null;
+  clearInterval(alertTimer);
+  if (!user) {
+    showAuth("email");
+    say("로그인하면 장소와 내 역을 즐겨찾기하고, 붐비면 알림을 받을 수 있습니다.");
+    renderFavorites();
+    return;
+  }
+  showAuth("in");
+  say("");
+  document.getElementById("who-email").textContent = user.email;
+  await loadFavorites();
+  alertTimer = setInterval(checkAlerts, ALERT_MS);
+}
+
+emailForm.addEventListener("submit", async (ev) => {
+  ev.preventDefault();
+  const btn = emailForm.querySelector("button");
+  btn.disabled = true;
+  const { error } = await sb.auth.signInWithOtp({ email: emailInput.value.trim(), options: { shouldCreateUser: true } });
+  btn.disabled = false;
+  if (error) return say(`코드를 보내지 못했습니다: ${error.message}`);
+  showAuth("code");
+  say(`${emailInput.value.trim()}로 6자리 코드를 보냈습니다. 메일에 온 코드를 넣어 주세요.`);
+  codeInput.value = "";
+  codeInput.focus();
+});
+codeForm.addEventListener("submit", async (ev) => {
+  ev.preventDefault();
+  const btn = codeForm.querySelector("button[type=submit]");
+  btn.disabled = true;
+  const { error } = await sb.auth.verifyOtp({ email: emailInput.value.trim(), token: codeInput.value.trim(), type: "email" });
+  btn.disabled = false;
+  if (error) say(`로그인하지 못했습니다: ${error.message}`);
+});
+document.getElementById("code-back").addEventListener("click", () => {
+  showAuth("email");
+  say("");
+  emailInput.focus();
+});
+document.getElementById("logout").addEventListener("click", () => sb.auth.signOut());
+
+async function loadFavorites() {
+  const [p, s] = await Promise.all([
+    sb.from("favorites").select("place_code, notify_level, places(name)").order("created_at"),
+    sb.from("favorite_stations").select("station_name, notify_ratio").order("created_at"),
+  ]);
+  if (p.error || s.error) say(`즐겨찾기를 불러오지 못했습니다: ${(p.error ?? s.error).message}`);
+  favs = {
+    places: (p.data ?? []).map((f) => ({ place_code: f.place_code, notify_level: f.notify_level, name: f.places?.name ?? f.place_code })),
+    stations: s.data ?? [],
+  };
+  favoritesChanged();
+}
+
+// 즐겨찾기나 기준을 바꾼 직후에는 기준점만 다시 잡는다(방금 고른 곳이 붐빈다고 바로 브라우저 알림을 띄우지 않는다).
+function favoritesChanged() {
+  renderFavorites();
+  updateStationStar();
+  updatePlaceStar();
+  checkAlerts({ quiet: true });
+  if (placeAlertsOn() && !cityTimer) pollCity();
+}
+
+// 로그인하지 않았으면 즐겨찾기 버튼이 로그인 칸으로 안내한다.
+function needLogin(what) {
+  say(sb ? `${what}을(를) 즐겨찾기하려면 먼저 로그인해 주세요.` : authMsg.textContent);
+  document.getElementById("account").scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "nearest" });
+  if (!emailForm.hidden) emailInput.focus();
+}
+
+async function toggleStation(name) {
+  if (!user) return needLogin(name);
+  const on = favs.stations.some((f) => f.station_name === name);
+  const { data, error } = on
+    ? await sb.from("favorite_stations").delete().eq("station_name", name)
+    : await sb.from("favorite_stations").insert({ station_name: name }).select("station_name, notify_ratio").single();
+  if (error) return say(`즐겨찾기를 바꾸지 못했습니다: ${error.message}`);
+  favs.stations = on ? favs.stations.filter((f) => f.station_name !== name) : [...favs.stations, data];
+  favoritesChanged();
+}
+async function togglePlace(area) {
+  if (!user) return needLogin(area.name);
+  const on = favs.places.some((f) => f.place_code === area.code);
+  const { data, error } = on
+    ? await sb.from("favorites").delete().eq("place_code", area.code)
+    : await sb.from("favorites").insert({ place_code: area.code }).select("place_code, notify_level").single();
+  if (error) {
+    // places는 수집기(npm run collect)가 처음 돌 때 채운다.
+    return say(error.code === "23503" ? "DB에 장소 목록이 아직 없습니다. npm run collect를 한 번 실행해 주세요." : `즐겨찾기를 바꾸지 못했습니다: ${error.message}`);
+  }
+  favs.places = on ? favs.places.filter((f) => f.place_code !== area.code) : [...favs.places, { ...data, name: area.name }];
+  favoritesChanged();
+}
+favStationBtn.addEventListener("click", () => selected && toggleStation(selected.entry.name));
+favPlaceBtn.addEventListener("click", () => historyArea && togglePlace(historyArea));
+
+const setStar = (btn, on, name, label) => {
+  btn.setAttribute("aria-pressed", String(on));
+  btn.textContent = `${on ? "★" : "☆"} ${label}`;
+  btn.setAttribute("aria-label", on ? `${name} 즐겨찾기 빼기` : `${name} 즐겨찾기`);
+};
+function updateStationStar() {
+  favStationBtn.hidden = !selected;
+  if (selected) setStar(favStationBtn, favs.stations.some((f) => f.station_name === selected.entry.name), selected.entry.name, "내 역");
+}
+function updatePlaceStar() {
+  if (historyArea) setStar(favPlaceBtn, favs.places.some((f) => f.place_code === historyArea.code), historyArea.name, "즐겨찾기");
+}
+
+async function setThreshold(table, keyCol, key, col, value) {
+  const { error } = await sb.from(table).update({ [col]: value }).eq(keyCol, key);
+  if (error) return say(`알림 기준을 바꾸지 못했습니다: ${error.message}`);
+  const list = table === "favorites" ? favs.places : favs.stations;
+  list.find((f) => f[keyCol] === key)[col] = value;
+  favoritesChanged();
+}
+
+// 즐겨찾기 한 줄: 이름(누르면 그 역·장소로) · 알림 기준 · 빼기
+function favItem(name, options, value, onGo, onPick, onRemove) {
+  const li = document.createElement("li");
+  li.innerHTML = `<button type="button" class="go"></button><select></select><button type="button" class="x">✕</button>`;
+  const [go, sel, x] = li.children;
+  go.textContent = name;
+  go.setAttribute("aria-label", `${name}로 가기`);
+  sel.setAttribute("aria-label", `${name} 알림 기준`);
+  sel.append(new Option("알림 끔", ""), ...options.map(([v, label]) => new Option(label, v)));
+  sel.value = value ?? "";
+  x.setAttribute("aria-label", `${name} 즐겨찾기 빼기`);
+  go.addEventListener("click", onGo);
+  sel.addEventListener("change", () => onPick(sel.value || null));
+  x.addEventListener("click", onRemove);
+  return li;
+}
+function renderFavorites() {
+  const stationsEl = document.getElementById("fav-stations");
+  const placesEl = document.getElementById("fav-places");
+  stationsEl.replaceChildren(...favs.stations.map((f) => favItem(f.station_name,
+    STATION_ALERT_RATIOS.map((r) => [r, `피크 ${r}% 이상`]), f.notify_ratio,
+    () => entryByName.has(f.station_name) && selectEntry(entryByName.get(f.station_name)),
+    (v) => setThreshold("favorite_stations", "station_name", f.station_name, "notify_ratio", v && Number(v)),
+    () => toggleStation(f.station_name))));
+  placesEl.replaceChildren(...favs.places.map((f) => favItem(f.name,
+    PLACE_ALERT_LEVELS.map((l) => [l, `${l} 이상`]), f.notify_level,
+    () => { const a = cityAreas.find((c) => c.code === f.place_code); if (a) selectPlace(a); },
+    (v) => setThreshold("favorites", "place_code", f.place_code, "notify_level", v),
+    () => togglePlace({ code: f.place_code, name: f.name }))));
+  if (!favs.stations.length) stationsEl.innerHTML = `<li class="empty">역을 고르고 답 카드의 ☆ 내 역을 누르세요.</li>`;
+  if (!favs.places.length) placesEl.innerHTML = `<li class="empty">지도에서 장소 영역을 누르고 ☆ 즐겨찾기를 누르세요.</li>`;
+  renderNotifyPerm();
+}
+
+function renderNotifyPerm() {
+  const p = "Notification" in window ? Notification.permission : "unsupported";
+  notifyPerm.hidden = p !== "default" || !(favs.places.length || favs.stations.length);
+}
+notifyPerm.addEventListener("click", async () => {
+  await Notification.requestPermission();
+  renderNotifyPerm();
+});
+
+const alertText = (a) => (a.kind === "place"
+  ? { title: `${a.name} 지금 ${a.level}`, body: `추정 인구 ${range(a)} · ${clock(a.time)} 기준(실시간 도시데이터)` }
+  : { title: `${a.name} ${hourLabel(a.hour)} 평소 피크의 ${pct(a.ratio)}`, body: `하루 평균 ${fmt(a.value / days)}명 · 승하차 통계 기준(실시간 아님)` });
+
+function checkAlerts({ quiet = false } = {}) {
+  if (!user) return alertsEl.replaceChildren();
+  const active = activeAlerts({
+    places: favs.places, stations: favs.stations, hour: kstHour(),
+    areaOf: (code) => cityAreas.find((a) => a.code === code), rowOf: (name) => entryByName.get(name)?.merged,
+  });
+  // 데이터가 다 들어오기 전에는 기준점을 잡지 않는다(들어오는 순간 전부 "새로 붐빔"이 되지 않게).
+  const ready = entries.length && (!placeAlertsOn() || cityLoaded);
+  if (ready) {
+    const fresh = newAlerts(quiet ? null : alertKeys, active);
+    alertKeys = new Set(active.map((a) => a.key));
+    if ("Notification" in window && Notification.permission === "granted") {
+      for (const a of fresh) {
+        const { title, body } = alertText(a);
+        new Notification(`서울 라이브 3D · ${title}`, { body, tag: a.key });
+      }
+    }
+  }
+  const on = favs.places.some((f) => f.notify_level) || favs.stations.some((f) => f.notify_ratio);
+  alertsEl.innerHTML = active.length
+    ? active.map((a) => {
+      const { title, body } = alertText(a);
+      // 장소는 그 혼잡도 단계 색, 역은 붐빔 색으로 띠를 칠한다.
+      return `<li style="border-left-color: var(${a.kind === "place" ? congestCss(a.level) : "--congest-4"})"><b>${esc(title)}</b><br><small>${esc(body)}</small></li>`;
+    }).join("")
+    : on ? `<li class="calm">지금 기준을 넘은 즐겨찾기가 없습니다.</li>` : "";
+}
+
+initAuth();
+
 // 고른 역·노선·시간 창이 바뀔 때마다 답 카드, 하루 띠, 차트, 시간 칸, 지도 강조를 함께 다시 그린다.
 function render() {
   const win = currentWindow();
@@ -694,6 +1016,7 @@ function render() {
   renderChart(row, win, quiet);
   renderTop5();
   refreshMap();
+  updateStationStar();
 }
 render();
 showHour();
@@ -829,6 +1152,7 @@ let showCity = true;
 let cityTimer = null;
 let cityGen = 0;
 let cityStamp = 0;   // 새 값을 받을 때마다 늘려 영역 높이·색을 다시 계산하게 한다
+let cityLoaded = false; // 실시간 값을 한 번이라도 받았는지(장소 알림의 기준점을 잡을 수 있는지)
 
 document.getElementById("city-legend").innerHTML = CONGEST.map((c) => `<span><i style="background: var(${c.css})"></i>${c.level}</span>`).join("");
 for (let k = 0; k <= 12; k++) {
@@ -886,19 +1210,24 @@ async function loadCity() {
       ? `영역 높이 = 추정 인구(범위의 가운데, 최대 눈금 ${fmt(cityMax)}명)`
       : "영역 높이 = 추정 인구(범위의 가운데)";
     loadHistory();
+    cityLoaded = true;
   } catch (err) {
     for (const area of cityAreas) area.live = null;
     cityStamp++;
     cityStatus.textContent = `실시간 도시데이터를 불러오지 못했습니다: ${err.message}`;
   }
   showForecast();
+  checkAlerts();
 }
+// 장소 알림이 켜져 있으면 레이어를 숨기거나 탭이 뒤에 있어도 계속 받는다(알림은 그때 쓸모 있다).
+const cityWanted = () => (showCity && !document.hidden) || placeAlertsOn();
 async function pollCity() {
   clearTimeout(cityTimer);
+  cityTimer = null;
   const gen = ++cityGen;
-  if (!showCity || document.hidden || !cityAreas.length) return;
+  if (!cityWanted() || !cityAreas.length) return;
   await loadCity();
-  if (gen === cityGen && showCity && !document.hidden) cityTimer = setTimeout(pollCity, CITY_MS);
+  if (gen === cityGen && cityWanted()) cityTimer = setTimeout(pollCity, CITY_MS);
 }
 document.addEventListener("visibilitychange", pollCity);
 cityToggle.addEventListener("click", () => {
@@ -953,6 +1282,7 @@ function selectPlace(area) {
   historyNote.textContent = "";
   loadHistory();
   refreshMap();
+  updatePlaceStar();
 }
 document.getElementById("history-close").addEventListener("click", () => {
   historyArea = null;
@@ -1119,6 +1449,7 @@ Promise.all([fetchCsv(SUBWAY_CSV), fetchCsv(STATION_MASTER_CSV)])
         console.warn("좌표가 없어 3D에서 뺀 역", merged.STTN);
       }
       entries.push(entry);
+      entryByName.set(entry.name, entry);
     }
     console.log(`3D에 세운 역 ${stations.length}곳`);
 
@@ -1187,6 +1518,7 @@ Promise.all([fetchCsv(SUBWAY_CSV), fetchCsv(STATION_MASTER_CSV)])
     refreshMap = () => deckgl.setProps({ layers: layers(Number(slider.value)) });
     renderTop5();
     showResults(); // 불러오는 동안 입력한 검색어가 있으면 결과를 보여 준다
+    renderFavorites();
     pollTrains();
     fetchAreas()
       .then((areas) => {

@@ -50,6 +50,16 @@
 - 지도에서 장소 영역을 누르면 쌓인 기록 중 최근 24시간을 작은 그래프로 보여 줍니다(선 = 추정 인구 범위의 가운데, 회색 띠 = 범위, 아래 띠 = 혼잡도, 수집이 멈춘 구간은 끊김). 서버가 `/api/crowd-history?code=POI009`로 읽어 주며, `.env`(Vercel은 환경 변수)에 `SUPABASE_URL`과 `SUPABASE_PUBLISHABLE_KEY`(`npx supabase status`의 Publishable 키, 읽기 전용)가 필요합니다.
 - 출처: 서울특별시 (https://data.seoul.go.kr/dataList/OA-21778/S/1/datasetView.do), 공공누리 제1유형(출처 표시).
 
+### 로그인 · 즐겨찾기 · 붐빔 알림 (`subway.html`)
+- 이메일로 받은 6자리 코드로 로그인합니다(Supabase Auth). 로컬에서는 메일이 실제로 나가지 않고 Mailpit(http://127.0.0.1:54424)에 쌓입니다.
+- 답 카드의 ☆ 내 역, 장소 기록 패널의 ☆ 즐겨찾기로 저장하고, 「내 즐겨찾기 · 붐빔 알림」 패널에서 기준을 고릅니다.
+  - 장소: 실시간 혼잡도가 보통 / 약간 붐빔(기본) / 붐빔 이상이면.
+  - 내 역: 지금 시간대 승하차(9월 통계)가 그 역 하루 피크의 40–90%(기본 60%) 이상이면. 역에는 실시간 인원 데이터가 없어 통계로 판단합니다.
+- 알림은 **페이지가 열려 있는 동안**만 확인합니다. 지금 붐비는 곳은 패널에 늘 보이고, 새로 붐비게 된 곳은 브라우저 알림(「브라우저 알림 켜기」로 허용)을 띄웁니다.
+- `.env`(Vercel은 환경 변수)에 `SUPABASE_URL`·`SUPABASE_PUBLISHABLE_KEY`가 필요합니다. 브라우저는 `/api/config`로 이 둘만 받습니다(publishable 키는 공개용이고 권한은 RLS가 막습니다).
+- 장소 즐겨찾기는 DB의 `places`를 참조하므로 `npm run collect`를 한 번은 실행해 두어야 합니다. 마이그레이션은 `npx supabase migration up`으로 적용합니다.
+- 배포한 Supabase 프로젝트에서는 Authentication → Email Templates의 Magic Link 템플릿에 `{{ .Token }}`(6자리 코드)을 넣어야 코드가 메일에 나옵니다. 로컬 기본 템플릿에는 이미 들어 있습니다.
+
 맨 위 3D 장면은 역마다 승차·하차 기둥을 세우고, 시간 슬라이더로 시간대를 바꾸면 높이가 바뀝니다. 역 좌표는 데이터에 없어 `index.html`에 근사값으로 넣었습니다. 3D 렌더링에는 [Three.js](https://threejs.org/)(MIT, CDN 로드)를 씁니다.
 
 ## 권한 설정

@@ -4,6 +4,10 @@
 
 export const CITYDATA_AREAS_ZIP = "data/raw/citydata/서울시 주요 121장소 영역.zip";
 
+// 실시간 도시데이터 혼잡도 단계(덜 붐빔 → 붐빔). 화면 색과 범례, 즐겨찾기 알림 기준도 이 순서를 쓴다.
+// node:fs를 쓰는 realtime-citydata.mjs는 브라우저에서 import할 수 없어서 여기에 둔다.
+export const CONGEST_LEVELS = ["여유", "보통", "약간 붐빔", "붐빔"];
+
 // ---- zip ----
 // 압축 안 함(0)과 deflate(8)만 다룬다. 풀기는 브라우저와 Node 22 이상에 있는 DecompressionStream으로 한다.
 

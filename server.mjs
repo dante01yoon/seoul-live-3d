@@ -1,5 +1,6 @@
 // 개발 서버: 저장소 파일을 그대로 내보내고, /api/trains로 실시간 열차 위치를, /api/citydata로 실시간 도시데이터를 대신 받아 준다.
 // /api/crowd-history?code=POI009는 Supabase에 쌓인 장소별 붐빔 기록(최근 24시간)을 읽어 준다(npm run collect가 쌓는다).
+// /api/config는 로그인·즐겨찾기에 쓸 Supabase 주소와 publishable 키를 알려 준다(브라우저에 공개하도록 만든 키, 권한은 RLS가 막는다).
 // 인증키는 이 서버만 읽는다(.env의 SEOUL_REALTIME_KEY: 실시간 지하철, SEOUL_OPENAPI_KEY: 일반 인증키). 브라우저로 가는 응답에는 키가 들어가지 않는다.
 //
 //   npm start   →  http://127.0.0.1:8000
@@ -63,6 +64,12 @@ createServer(async (req, res) => {
       const data = await (pathname === "/api/trains" ? trains() : city.citydata());
       res.writeHead(200, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
       res.end(JSON.stringify(data));
+    } else if (pathname === "/api/config") {
+      const configured = Boolean(process.env.SUPABASE_URL && process.env.SUPABASE_PUBLISHABLE_KEY);
+      res.writeHead(configured ? 200 : 503, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
+      res.end(JSON.stringify(configured
+        ? { supabaseUrl: process.env.SUPABASE_URL, supabaseKey: process.env.SUPABASE_PUBLISHABLE_KEY }
+        : { error: "로그인 DB가 설정되지 않았습니다" }));
     } else if (pathname === "/api/crowd-history") {
       const code = new URL(req.url, `http://${HOST}`).searchParams.get("code");
       const [status, data] = !crowd.configured ? [503, { error: "붐빔 기록 DB가 설정되지 않았습니다" }]
