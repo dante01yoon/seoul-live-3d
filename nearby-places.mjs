@@ -48,3 +48,24 @@ export function nearbyAreas(point, areas, { radiusM = NEARBY_RADIUS_M, limit = N
     .sort((a, b) => a.distanceM - b.distanceM)
     .slice(0, limit);
 }
+
+// 두 점 사이 거리(m). 몇 km 안쪽만 다루므로 평면으로 편다.
+export function distanceM([lng1, lat1], [lng2, lat2]) {
+  const kx = M_PER_DEG * Math.cos((((lat1 + lat2) / 2) * Math.PI) / 180);
+  return Math.hypot((lng2 - lng1) * kx, (lat2 - lat1) * M_PER_DEG);
+}
+
+// 영역에서 radiusM 안에 있는 항목을 가까운 순으로. [{ item, distanceM }]
+// 따릉이 대여소처럼 항목이 많을 때를 위해 영역 둘레 사각형 밖은 거리를 재지 않고 뺀다.
+export function itemsNearArea(polygons, items, radiusM, positionOf = (d) => d) {
+  const pts = polygons.flatMap((p) => p[0]);
+  const lats = pts.map((p) => p[1]), lngs = pts.map((p) => p[0]);
+  const dLat = radiusM / M_PER_DEG;
+  const dLng = radiusM / (M_PER_DEG * Math.cos((Math.max(...lats.map(Math.abs)) * Math.PI) / 180));
+  const [w, e, s, n] = [Math.min(...lngs) - dLng, Math.max(...lngs) + dLng, Math.min(...lats) - dLat, Math.max(...lats) + dLat];
+  return items
+    .filter((d) => { const [x, y] = positionOf(d); return x >= w && x <= e && y >= s && y <= n; })
+    .map((item) => ({ item, distanceM: distanceToArea(positionOf(item), polygons) }))
+    .filter((n) => n.distanceM <= radiusM)
+    .sort((a, b) => a.distanceM - b.distanceM);
+}

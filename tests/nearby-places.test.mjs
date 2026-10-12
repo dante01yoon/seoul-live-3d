@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFile } from "node:fs/promises";
 import { test } from "node:test";
 import { CITYDATA_AREAS_ZIP, parseAreasZip } from "../citydata-areas.mjs";
-import { NEARBY_LIMIT, NEARBY_RADIUS_M, distanceToArea, nearbyAreas } from "../nearby-places.mjs";
+import { NEARBY_LIMIT, NEARBY_RADIUS_M, distanceM, distanceToArea, itemsNearArea, nearbyAreas } from "../nearby-places.mjs";
 import { STATION_MASTER_CSV, decodeCsv, parseCsv, stationLocator } from "../subway-csv.mjs";
 
 // 서울시청 근처 기준점. 위도 0.001도 ≈ 111m, 이 위도에서 경도 0.001도 ≈ 88m.
@@ -48,6 +48,18 @@ test("반경 안의 장소만 가까운 순서로, 최대 개수까지", () => {
   near(got[2].distanceM, 400);
   assert.deepEqual(nearbyAreas(O, areas, { radiusM: 100 }).map((n) => n.area.name), ["안"]);
   assert.deepEqual(nearbyAreas(O, [area("멀리", 2000, 0)]), []);
+});
+
+test("distanceM: 두 점 사이 거리(m)", () => {
+  near(distanceM(O, at(300, 400)), 500);
+  assert.equal(distanceM(O, O), 0);
+});
+
+test("itemsNearArea: 영역에서 반경 안의 항목만 가까운 순으로", () => {
+  const items = [{ id: "멀리", p: at(800, 0) }, { id: "안", p: at(10, 10) }, { id: "근처", p: at(0, 250) }, { id: "모서리밖", p: at(300, 300) }];
+  const got = itemsNearArea([[square(0, 0, 200)]], items, 200, (d) => d.p);
+  assert.deepEqual(got.map((n) => n.item.id), ["안", "근처"]);
+  near(got[1].distanceM, 150);
 });
 
 test("기본 반경과 개수", () => {

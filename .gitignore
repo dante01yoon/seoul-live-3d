@@ -3,3 +3,5 @@
 .vercel
 .env*
 !.env.example
+.claude/worktrees/
+data/bike/bike-rentals-*.csv
