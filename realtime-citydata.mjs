@@ -14,17 +14,27 @@ export { CONGEST_LEVELS };
 
 const toNum = (v) => (v === undefined || v === null || v === "" ? null : Number(v));
 
+// 연령대 비율 칸(PPLTN_RATE_0 … PPLTN_RATE_70): 0 = 10세 미만, 70 = 70대 이상. 지금 값만 있고 예측에는 없다.
+export const AGE_GROUPS = [0, 10, 20, 30, 40, 50, 60, 70];
+
 // API 행(citydata_ppltn) → 화면에 쓰는 값만. now와 forecast 항목은 { time, level, min, max } 같은 모양이다.
+// ages는 지금(now.time) 연령대별 비율(%)이다. 한 칸이라도 비면 null.
 export function toCitydata(row) {
   return {
     code: row.AREA_CD,
     name: row.AREA_NM,
     message: row.AREA_CONGEST_MSG,
     now: { time: row.PPLTN_TIME, level: row.AREA_CONGEST_LVL, min: toNum(row.AREA_PPLTN_MIN), max: toNum(row.AREA_PPLTN_MAX) },
+    ages: toAges(row),
     forecast: row.FCST_YN === "Y"
       ? (row.FCST_PPLTN ?? []).map((f) => ({ time: f.FCST_TIME, level: f.FCST_CONGEST_LVL, min: toNum(f.FCST_PPLTN_MIN), max: toNum(f.FCST_PPLTN_MAX) }))
       : [],
   };
+}
+
+function toAges(row) {
+  const ages = AGE_GROUPS.map((age) => ({ age, rate: toNum(row[`PPLTN_RATE_${age}`]) }));
+  return ages.every((a) => Number.isFinite(a.rate)) ? ages : null;
 }
 
 // 저장소의 영역 zip에서 장소 코드 121개를 읽는다.
