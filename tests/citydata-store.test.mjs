@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
 import { RUN_ERROR_SAMPLES, createCrowdHistory, createCrowdStore, isPlaceCode, kstToIso, toPlaceRows, toRunRow, toSnapshotRows } from "../citydata-store.mjs";
+import { DB_DOWN_MESSAGE, DbUnavailableError, dbErrorText, isDbUnavailable } from "../db-status.mjs";
 
 const area = (code, now, message = "크게 붐비지는 않아요.") => ({ code, name: code, message, now, forecast: [] });
 
@@ -131,4 +132,30 @@ test("장소 코드가 아니거나 설정이 없으면 묻지 않는다", () =>
   const off = createCrowdHistory({ url: "", key: "" });
   assert.equal(off.configured, false);
   assert.throws(() => off.history("POI009"), /SUPABASE_URL/);
+});
+
+test("DB가 꺼졌거나 닿지 않으면 DbUnavailableError를 던지고 캐시하지 않는다", async () => {
+  const { history } = createCrowdHistory({ url: "http://127.0.0.1:54421", key: "k" });
+  globalThis.fetch = async () => Response.json({ code: "PGRST002", message: "Could not query the database for the schema cache. Retrying." }, { status: 503 });
+  await assert.rejects(history("POI009"), (err) => err instanceof DbUnavailableError && /HTTP 503/.test(err.message));
+  globalThis.fetch = async () => { throw new TypeError("fetch failed"); };
+  await assert.rejects(history("POI009"), DbUnavailableError);
+  globalThis.fetch = async () => Response.json({ message: "잘못된 요청" }, { status: 400 });
+  await assert.rejects(history("POI009"), (err) => !(err instanceof DbUnavailableError) && /HTTP 400/.test(err.message));
+  globalThis.fetch = async () => Response.json([]);
+  assert.deepEqual((await history("POI009")).points, []);
+});
+
+test("DB 연결 오류를 알아보고 안내 문구로 바꾼다", () => {
+  assert.ok(isDbUnavailable(new DbUnavailableError("x")));
+  assert.ok(isDbUnavailable({ code: "PGRST002", message: "Could not query the database" }));
+  assert.ok(isDbUnavailable({ name: "AuthApiError", status: 500, message: "Database error finding user" }));
+  assert.ok(isDbUnavailable({ name: "AuthRetryableFetchError", status: 0, message: "Failed to fetch" }));
+  assert.ok(isDbUnavailable({ code: "", message: "TypeError: Failed to fetch" }));
+  assert.ok(isDbUnavailable({ code: "42P01", message: "x" }, 503));
+  for (const err of [null, { code: "42501", message: "관리자만 볼 수 있습니다" }, { code: "23503", message: "fk" }, { name: "AuthApiError", status: 400, message: "Token has expired" }]) {
+    assert.equal(isDbUnavailable(err), false);
+  }
+  assert.equal(dbErrorText("즐겨찾기를 불러오지 못했습니다", { code: "PGRST002", message: "Could not query" }), `즐겨찾기를 불러오지 못했습니다. ${DB_DOWN_MESSAGE}`);
+  assert.equal(dbErrorText("로그인하지 못했습니다", { status: 400, message: "Token has expired" }), "로그인하지 못했습니다: Token has expired");
 });

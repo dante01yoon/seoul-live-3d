@@ -14,6 +14,7 @@ import { fileURLToPath } from "node:url";
 import { createTrainsSource } from "./realtime-trains.mjs";
 import { createCitydataSource } from "./realtime-citydata.mjs";
 import { createCrowdHistory, isPlaceCode } from "./citydata-store.mjs";
+import { DB_DOWN_MESSAGE, isDbUnavailable } from "./db-status.mjs";
 
 const ROOT = fileURLToPath(new URL(".", import.meta.url));
 const PORT = Number(process.env.PORT ?? 8000);
@@ -74,7 +75,12 @@ createServer(async (req, res) => {
       const code = new URL(req.url, `http://${HOST}`).searchParams.get("code");
       const [status, data] = !crowd.configured ? [503, { error: "붐빔 기록 DB가 설정되지 않았습니다" }]
         : !isPlaceCode(code) ? [400, { error: "장소 코드가 아닙니다" }]
-        : [200, await crowd.history(code)];
+        : await crowd.history(code).then((d) => [200, d], (err) => {
+          if (!isDbUnavailable(err)) throw err;
+          // DB가 꺼진 동안은 요청마다 스택을 남기지 않고 한 줄만 남긴다. 화면에는 안내 문구를 보낸다.
+          console.warn(`붐빔 기록 DB 연결 안 됨(error): ${err.message}`);
+          return [503, { error: DB_DOWN_MESSAGE, retry: true }];
+        });
       res.writeHead(status, { "Content-Type": "application/json; charset=utf-8", "Cache-Control": "no-store" });
       res.end(JSON.stringify(data));
     } else if (req.method === "GET" || req.method === "HEAD") {

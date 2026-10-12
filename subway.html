@@ -137,6 +137,8 @@
 
   .chart-slot { height: 170px; border: 1px dashed var(--border); border-radius: 10px; display: grid; place-items: center;
                 font-size: 13px; color: var(--text-muted); }
+  .history-error { margin: 0; padding: 0 16px; text-align: center; line-height: 1.6; }
+  .history-error button { margin-top: 8px; }
 
   /* 3D 지도 자리 */
   .scene { position: relative; height: 70vh; border: 1px solid var(--grid); border-radius: 16px; overflow: hidden;
@@ -434,6 +436,7 @@ import { SUBWAY_LINES, DUPLICATE_STATIONS, parseStop } from "./subway-lines.mjs"
 import { lineGeometry, placeTrain } from "./train-positions.mjs";
 import { fetchAreas } from "./citydata-areas.mjs";
 import { PLACE_ALERT_LEVELS, STATION_ALERT_RATIOS, activeAlerts, kstHour, newAlerts, throttleAlerts } from "./alerts.mjs";
+import { DB_DOWN_MESSAGE, dbErrorText } from "./db-status.mjs";
 
 const pad = (h) => String(h).padStart(2, "0");
 const hourLabel = (h) => `${pad(h)}시대`;
@@ -833,7 +836,7 @@ emailForm.addEventListener("submit", async (ev) => {
   btn.disabled = true;
   const { error } = await sb.auth.signInWithOtp({ email: emailInput.value.trim(), options: { shouldCreateUser: true } });
   btn.disabled = false;
-  if (error) return say(`코드를 보내지 못했습니다: ${error.message}`);
+  if (error) return say(dbErrorText("코드를 보내지 못했습니다", error));
   showAuth("code");
   say(`${emailInput.value.trim()}로 6자리 코드를 보냈습니다. 메일에 온 코드를 넣어 주세요.`);
   codeInput.value = "";
@@ -845,7 +848,7 @@ codeForm.addEventListener("submit", async (ev) => {
   btn.disabled = true;
   const { error } = await sb.auth.verifyOtp({ email: emailInput.value.trim(), token: codeInput.value.trim(), type: "email" });
   btn.disabled = false;
-  if (error) say(`로그인하지 못했습니다: ${error.message}`);
+  if (error) say(dbErrorText("로그인하지 못했습니다", error));
 });
 document.getElementById("code-back").addEventListener("click", () => {
   showAuth("email");
@@ -859,7 +862,7 @@ async function loadFavorites() {
     sb.from("favorites").select("place_code, notify_level, places(name)").order("created_at"),
     sb.from("favorite_stations").select("station_name, notify_ratio").order("created_at"),
   ]);
-  if (p.error || s.error) say(`즐겨찾기를 불러오지 못했습니다: ${(p.error ?? s.error).message}`);
+  if (p.error || s.error) say(dbErrorText("즐겨찾기를 불러오지 못했습니다", p.error ?? s.error, p.error ? p.status : s.status));
   favs = {
     places: (p.data ?? []).map((f) => ({ place_code: f.place_code, notify_level: f.notify_level, name: f.places?.name ?? f.place_code })),
     stations: s.data ?? [],
@@ -889,7 +892,7 @@ async function toggleStation(name) {
   const { data, error } = on
     ? await sb.from("favorite_stations").delete().eq("station_name", name)
     : await sb.from("favorite_stations").insert({ station_name: name }).select("station_name, notify_ratio").single();
-  if (error) return say(`즐겨찾기를 바꾸지 못했습니다: ${error.message}`);
+  if (error) return say(dbErrorText("즐겨찾기를 바꾸지 못했습니다", error));
   favs.stations = on ? favs.stations.filter((f) => f.station_name !== name) : [...favs.stations, data];
   favoritesChanged();
 }
@@ -901,7 +904,7 @@ async function togglePlace(area) {
     : await sb.from("favorites").insert({ place_code: area.code }).select("place_code, notify_level").single();
   if (error) {
     // places는 수집기(npm run collect)가 처음 돌 때 채운다.
-    return say(error.code === "23503" ? "DB에 장소 목록이 아직 없습니다. npm run collect를 한 번 실행해 주세요." : `즐겨찾기를 바꾸지 못했습니다: ${error.message}`);
+    return say(error.code === "23503" ? "DB에 장소 목록이 아직 없습니다. npm run collect를 한 번 실행해 주세요." : dbErrorText("즐겨찾기를 바꾸지 못했습니다", error));
   }
   favs.places = on ? favs.places.filter((f) => f.place_code !== area.code) : [...favs.places, { ...data, name: area.name }];
   favoritesChanged();
@@ -924,7 +927,7 @@ function updatePlaceStar() {
 
 async function setThreshold(table, keyCol, key, col, value) {
   const { error } = await sb.from(table).update({ [col]: value }).eq(keyCol, key);
-  if (error) return say(`알림 기준을 바꾸지 못했습니다: ${error.message}`);
+  if (error) return say(dbErrorText("알림 기준을 바꾸지 못했습니다", error));
   const list = table === "favorites" ? favs.places : favs.stations;
   list.find((f) => f[keyCol] === key)[col] = value;
   favoritesChanged();
@@ -1303,13 +1306,33 @@ async function loadHistory() {
   try {
     const res = await fetch(`api/crowd-history?code=${encodeURIComponent(area.code)}`);
     const body = res.headers.get("content-type")?.includes("json") ? await res.json() : null;
-    if (!res.ok || !body) throw new Error(body?.error ?? (res.status === 404 ? "npm start로 연 서버에서만 보입니다" : `HTTP ${res.status}`));
+    if (!res.ok || !body) {
+      if (res.status >= 500) throw Object.assign(new Error(body?.error ?? DB_DOWN_MESSAGE), { retry: true });
+      throw new Error(body?.error ?? (res.status === 404 ? "npm start로 연 서버에서만 보입니다" : `HTTP ${res.status}`));
+    }
     if (gen === historyGen) renderHistory(area, body);
   } catch (err) {
     if (gen !== historyGen) return;
     historyChart.className = "chart chart-slot";
-    historyChart.textContent = `기록을 불러오지 못했습니다: ${err.message}`;
     historyNote.textContent = "";
+    // 서버나 DB가 잠깐 꺼진 경우(5xx, 서버에 닿지 않음)는 안내와 함께 다시 시도할 수 있게 한다.
+    const retry = err.retry || err instanceof TypeError;
+    const msg = document.createElement("p");
+    msg.className = "history-error";
+    msg.textContent = retry ? `붐빔 기록을 불러오지 못했습니다. ${err instanceof TypeError ? "서버에 연결할 수 없습니다. 잠시 뒤 다시 시도해 주세요." : err.message}`
+      : `기록을 불러오지 못했습니다: ${err.message}`;
+    historyChart.replaceChildren(msg);
+    if (retry) {
+      const btn = document.createElement("button");
+      btn.type = "button";
+      btn.textContent = "다시 시도";
+      btn.setAttribute("aria-label", "붐빔 기록 다시 불러오기");
+      btn.addEventListener("click", () => {
+        historyChart.textContent = "불러오는 중…";
+        loadHistory();
+      });
+      msg.append(document.createElement("br"), btn);
+    }
   }
 }
 

@@ -203,6 +203,7 @@
 // 관리자 화면. 로그인은 지하철 화면과 같은 Supabase Auth 이메일 OTP.
 // 숫자는 DB 함수 admin_dashboard() 한 번으로 받는다. 함수가 admin_users에 있는 사용자인지 확인하고, 아니면 42501로 거절한다.
 // 그래서 이 페이지 자체는 누구나 열 수 있어도 관리자가 아니면 숫자를 하나도 받지 못한다.
+import { DB_DOWN_MESSAGE, dbErrorText, isDbUnavailable } from "./db-status.mjs";
 const SUPABASE_JS = "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/+esm";
 const REFRESH_MS = 60_000;
 // 수집은 5분 간격. 마지막 성공이 이보다 오래되면 지연·멈춤으로 본다.
@@ -282,7 +283,7 @@ $("email-form").addEventListener("submit", async (ev) => {
   // 관리자 화면에서는 새 계정을 만들지 않는다.
   const { error } = await sb.auth.signInWithOtp({ email: $("email").value.trim(), options: { shouldCreateUser: false } });
   btn.disabled = false;
-  if (error) return say(`코드를 보내지 못했습니다: ${error.message}`);
+  if (error) return say(dbErrorText("코드를 보내지 못했습니다", error));
   show("code");
   say(`${$("email").value.trim()}로 6자리 코드를 보냈습니다.`);
   $("code").value = "";
@@ -294,7 +295,7 @@ $("code-form").addEventListener("submit", async (ev) => {
   btn.disabled = true;
   const { error } = await sb.auth.verifyOtp({ email: $("email").value.trim(), token: $("code").value.trim(), type: "email" });
   btn.disabled = false;
-  if (error) say(`로그인하지 못했습니다: ${error.message}`);
+  if (error) say(dbErrorText("로그인하지 못했습니다", error));
 });
 $("code-back").addEventListener("click", () => (show("email"), say(""), $("email").focus()));
 $("logout").addEventListener("click", () => sb.auth.signOut());
@@ -302,7 +303,13 @@ $("refresh").addEventListener("click", () => load());
 
 // ---- 요약 ----
 async function load() {
-  const { data, error } = await sb.rpc("admin_dashboard");
+  const { data, error, status } = await sb.rpc("admin_dashboard");
+  // DB가 잠깐 꺼진 동안은 안내만 띄우고 주기 확인은 계속한다(DB가 돌아오면 저절로 다시 보인다).
+  if (error && isDbUnavailable(error, status)) {
+    show(null); // 안내 문구는 로그인 칸에 있다. DB가 돌아오면 show("dash")가 다시 숨긴다.
+    say(`요약을 불러오지 못했습니다. ${DB_DOWN_MESSAGE} ${REFRESH_MS / 1000}초마다 다시 확인합니다.`);
+    return true;
+  }
   if (error) {
     clearInterval(timer);
     show(null);

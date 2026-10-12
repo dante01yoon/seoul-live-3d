@@ -3,6 +3,7 @@
 // PostgREST에 fetch로 바로 보낸다(의존성 없음). 키는 헤더에만 넣고 오류 문구에는 넣지 않는다.
 
 import { CONGEST_LEVELS } from "./realtime-citydata.mjs";
+import { DbUnavailableError } from "./db-status.mjs";
 
 // API의 PPLTN_TIME("2026-10-12 13:40", KST) → ISO 8601(+09:00). 모양이 다르면 null.
 export function kstToIso(time) {
@@ -102,10 +103,12 @@ export function createCrowdHistory({ url, key }, hours = HISTORY_HOURS) {
       observed_at: `gte.${from.toISOString()}`,
       order: "observed_at.asc",
     });
+    // DB가 꺼졌거나(PostgREST 5xx) Supabase에 닿지 않으면(fetch 실패·시간 초과) DbUnavailableError로 알린다.
     const res = await fetch(`${base}/crowd_snapshots?${qs}`, {
       headers: { apikey: key, Authorization: `Bearer ${key}` },
       signal: AbortSignal.timeout(8000),
-    });
+    }).catch((err) => { throw new DbUnavailableError(`crowd_snapshots 읽기 실패: ${err.message}`); });
+    if (res.status >= 500) throw new DbUnavailableError(`crowd_snapshots 읽기 실패 HTTP ${res.status}`);
     if (!res.ok) throw new Error(`crowd_snapshots 읽기 실패 HTTP ${res.status}`);
     const rows = await res.json();
     return {
