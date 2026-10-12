@@ -111,3 +111,30 @@ export async function loadBikeTrips(baseUrl = "") {
   const [data, coords] = await Promise.all([get(BIKE_TRIPS_JSON), get(BIKE_COORDS)]);
   return { ...fromTripsJson(data, coords), coords };
 }
+
+// 운행 하루(04:00–다음 날 04:00). 지하철 시간대(HOURS)와 같은 하루로 맞춰 subway.html에서 함께 재생한다.
+export const SERVICE_START_S = 4 * 3600;
+const DAY_S = 86400;
+
+// 04:00 전에 시작한 이동(그날 새벽)은 하루 끝(다음 날 새벽)으로 옮긴다. 기록이 하루뿐이라
+// 같은 날 새벽 기록으로 다음 날 새벽을 대신한다. 그러면 시각이 SERVICE_START_S부터 이어진다.
+export const toServiceDay = (trips, startS = SERVICE_START_S) =>
+  trips.map((t) => (t.start < startS ? { ...t, start: t.start + DAY_S, end: t.end + DAY_S } : t));
+
+// 대여소별, 운행 시간대(HOURS 순서 0–23)별 대여+반납 건수. Map 대여소 키 → 24칸 배열.
+// 대여는 대여소·대여 시각, 반납은 반납소·반납 시각으로 센다. 운행 하루 밖(다음 날 04시 이후 반납)은 세지 않는다.
+export function dockActivity(trips, startS = SERVICE_START_S) {
+  const byDock = new Map();
+  const add = (key, s) => {
+    const i = Math.floor((s - startS) / 3600);
+    if (!(i >= 0 && i < 24)) return;
+    let counts = byDock.get(key);
+    if (!counts) byDock.set(key, (counts = new Array(24).fill(0)));
+    counts[i]++;
+  };
+  for (const t of trips) {
+    add(t.fromNo, t.start);
+    add(t.toNo, t.end);
+  }
+  return byDock;
+}

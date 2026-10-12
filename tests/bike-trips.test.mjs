@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import { existsSync, readFileSync } from "node:fs";
 import { test } from "node:test";
 import {
-  BIKE_COORDS, BIKE_CSV, BIKE_DAY, BIKE_TRIPS_JSON, fromTripsJson, hourlyStarts, stationKey, toSeconds, toTrips, toTripsJson,
+  BIKE_COORDS, BIKE_CSV, BIKE_DAY, BIKE_TRIPS_JSON, SERVICE_START_S, dockActivity, fromTripsJson, hourlyStarts, stationKey, toSeconds,
+  toServiceDay, toTrips, toTripsJson,
 } from "../bike-trips.mjs";
 import { decodeCsv, parseCsv } from "../subway-csv.mjs";
 
@@ -152,4 +153,33 @@ csvTest("원본 CSV: 첫 행과 100번째 행", () => {
   assert.equal(records[99]["자전거번호"], "SPB-70844");
   assert.equal(csvTrips[99].bike, "SPB-70844");
   assert.deepEqual([csvTrips[99].minutes, csvTrips[99].meters], [4, 1280]);
+});
+
+test("toServiceDay: 04시 전에 시작한 이동은 하루 끝으로 옮긴다", () => {
+  const t = (start, end) => ({ fromNo: "1", toNo: "2", start, end });
+  assert.equal(SERVICE_START_S, 4 * 3600);
+  assert.deepEqual(toServiceDay([t(100, 700), t(14400, 15000), t(86000, 87000)]).map((x) => [x.start, x.end]),
+    [[86500, 87100], [14400, 15000], [86000, 87000]]);
+});
+
+test("dockActivity: 대여소별 운행 시간대(04시 = 0번)별 대여+반납, 하루 밖은 세지 않는다", () => {
+  const t = (fromNo, toNo, start, end) => ({ fromNo, toNo, start, end });
+  const act = dockActivity([
+    t("1", "2", 4 * 3600, 4 * 3600 + 600),       // 04시대 대여·반납
+    t("1", "1", 5 * 3600 - 1, 5 * 3600 + 10),    // 04시대 대여, 05시대 반납(같은 대여소)
+    t("2", "3", 27 * 3600 + 50, 28 * 3600 + 5),  // 다음 날 03시대 대여, 04시 넘어 반납 → 반납은 안 셈
+  ]);
+  assert.deepEqual(act.get("1").slice(0, 2), [2, 1]);
+  assert.equal(act.get("2")[0], 1);
+  assert.equal(act.get("2")[23], 1);
+  assert.equal(act.has("3"), false);
+});
+
+test("실제 데이터: 운행 하루로 옮겨도 건수는 같고 모든 이동이 04시 이후에 시작한다", () => {
+  const moved = toServiceDay(trips);
+  assert.equal(moved.length, trips.length);
+  assert.ok(moved.every((t) => t.start >= SERVICE_START_S && t.end >= t.start));
+  const act = dockActivity(moved);
+  const sum = [...act.values()].reduce((a, c) => a + c.reduce((x, y) => x + y, 0), 0);
+  assert.equal(sum, trips.length * 2 - moved.filter((t) => t.end >= SERVICE_START_S + 86400).length);
 });

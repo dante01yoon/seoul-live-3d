@@ -31,6 +31,7 @@
     --congest-3: #fd7e14;    /* 약간 붐빔 */
     --congest-4: #f03e3e;    /* 붐빔 */
     --congest-none: #5b6273; /* 그 시각 값 없음 */
+    --bike: #b197fc;         /* 따릉이 이동선: 기둥·혼잡도·열차 색과 겹치지 않는 보라 */
   }
   * { box-sizing: border-box; }
   body { font-family: system-ui, sans-serif; background: var(--surface); color: var(--text-primary); margin: 24px; }
@@ -172,6 +173,7 @@
   .scene-legend i { width: 10px; height: 10px; border-radius: 2px; }
   .scene-legend .ramp { width: 48px; background: linear-gradient(to right, var(--ramp-low), var(--ramp-high)); }
   .scene-legend .train { width: 10px; border-radius: 50%; background: var(--train); }
+  .scene-legend .bike { width: 16px; height: 3px; border-radius: 2px; background: var(--bike); }
   .scene-legend .live { flex-wrap: wrap; }
   .scene-legend .live-text { align-items: flex-start; }
   .scene-legend .live-text i { flex: none; margin-top: 4px; }
@@ -179,15 +181,32 @@
   .scene-legend .congest { display: flex; flex-wrap: wrap; gap: 4px 10px; }
   .scene-legend .congest span { gap: 4px; }
 
-  /* 도시데이터 예측 슬라이더 */
+  /* 시간 슬라이더 아래: 그 시각 붐빔·따릉이 요약 */
   .panel[hidden] { display: none; }
-  /* 13칸이라 좁은 화면에서도 모두 들어간다(.ticks의 좁은 화면 숨김 규칙을 받지 않게 클래스를 따로 둔다). */
-  .fcst-ticks { display: grid; grid-template-columns: repeat(13, minmax(0, 1fr)); gap: 1px; }
-  .fcst-ticks span { font-size: 10px; text-align: center; padding: 2px 0; border-radius: 3px; color: var(--text-muted);
-                     font-variant-numeric: tabular-nums; white-space: nowrap; }
-  .fcst-ticks .current { background: var(--answer); color: var(--answer-ink); font-weight: 600; }
-  .city-summary { margin: 0; font-size: 12px; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+  .city-summary { margin: 0; font-size: 12px; line-height: 1.6; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+  .city-summary > span { display: block; }
+  .city-summary > span:empty { display: none; }
   .city-summary i { display: inline-block; width: 8px; height: 8px; margin-right: 4px; border-radius: 2px; }
+
+  /* 어디로 무엇을 타고 갈까 */
+  .reco-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 4px; }
+  .reco-list li[hidden] { display: none; }
+  .reco-list button { width: 100%; min-height: 52px; padding: 8px 10px; display: grid; grid-template-columns: 4.5em minmax(0, 1fr);
+                      align-items: center; gap: 10px; border: 1px solid var(--grid); border-radius: 10px; background: var(--surface);
+                      text-align: left; cursor: pointer; }
+  .reco-list button:hover, .reco-list button:focus-visible { border-color: var(--border); background: var(--grid); }
+  .reco-list .mode { padding: 4px 0; border-radius: 6px; border: 1px solid var(--border); text-align: center; font-size: 13px; font-weight: 700; }
+  .reco-list .mode.bike { border-color: var(--bike); color: var(--bike); }
+  .reco-list .mode.subway { border-color: var(--text-secondary); color: var(--text-primary); }
+  .reco-list .mode.walk, .reco-list .mode.none { color: var(--text-secondary); }
+  .reco-list .what { min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+  .reco-list .head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; }
+  .reco-list .head b { font-size: 15px; }
+  .reco-list .lvl { font-size: 12px; color: var(--text-secondary); }
+  .reco-list .lvl i { display: inline-block; width: 8px; height: 8px; margin-right: 4px; border-radius: 2px; }
+  .reco-list small { font-size: 12px; line-height: 1.5; color: var(--text-muted); }
+  .reco-list .empty { padding: 10px; font-size: 13px; color: var(--text-muted); }
+  .reco .basis { margin: 0; font-size: 11px; line-height: 1.6; color: var(--text-muted); }
 
   /* 장소별 붐빔 기록(최근 24시간) */
   .history-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; }
@@ -255,6 +274,8 @@
   .track { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 6px; }
   .track-head { display: flex; justify-content: space-between; align-items: baseline; font-size: 13px; color: var(--text-secondary); }
   .track-head output { font-size: 18px; font-weight: 700; color: var(--answer); font-variant-numeric: tabular-nums; }
+  .track-head .now-wrap { display: flex; align-items: center; gap: 8px; white-space: nowrap; }
+  .track-head .now-btn { min-height: 32px; font-size: 12px; }
   .track input[type=range] { width: 100%; margin: 0; accent-color: var(--answer); }
   .ticks { display: grid; grid-template-columns: repeat(24, minmax(0, 1fr)); gap: 1px; }
   .ticks span { font-size: 10px; text-align: center; padding: 2px 0; border-radius: 3px; color: var(--text-muted);
@@ -270,6 +291,7 @@
     body { margin: 16px; }
     .top .sub { display: block; margin: 4px 0 0; }
     .side { max-width: none; }
+    .wide-only { display: none; }
     .ticks span:nth-child(even):not(.current) { visibility: hidden; }
     /* 홀수 시간대가 현재일 때 양옆 눈금과 겹치지 않게 숨긴다. */
     .ticks span:has(+ .current), .ticks .current + span { visibility: hidden; }
@@ -290,6 +312,7 @@
     </div>
     <div class="badges">
       <span>데이터 기준 <span class="data-month">2026년 9월</span></span>
+      <span>따릉이 2026년 6월 13일(토)</span>
     </div>
   </header>
 
@@ -396,32 +419,32 @@
             <button type="button" class="chip" id="city-toggle" aria-pressed="true" aria-label="실시간 도시데이터 숨기기">숨기기</button></span>
           <span class="congest" id="city-legend" aria-label="도시데이터 혼잡도 색"></span>
           <span id="city-scale">영역 높이 = 추정 인구(범위의 가운데)</span>
+          <span class="live"><span class="live-text"><i class="bike"></i><span id="bike-status">따릉이 이동 불러오는 중…</span></span>
+            <button type="button" class="chip" id="bike-toggle" aria-pressed="true" aria-label="따릉이 이동 숨기기">숨기기</button></span>
         </div>
       </div>
 
       <div class="panel timeline">
-        <button type="button" class="play" id="play" aria-label="시간대 자동 재생">▶</button>
+        <button type="button" class="play" id="play" aria-label="시각 자동 재생">▶</button>
         <div class="track">
           <div class="track-head">
-            <label for="hour">시간대</label>
-            <output id="hour-label" for="hour">11시대</output>
+            <label for="hour">시각<span class="muted wide-only"> · 지하철·붐빔·따릉이 함께</span></label>
+            <span class="now-wrap"><output id="hour-label" for="hour">11:00</output><button type="button" class="chip now-btn" id="hour-now" aria-label="지금 시각으로">지금</button></span>
           </div>
-          <input type="range" id="hour" min="0" max="23" step="1" value="7">
+          <input type="range" id="hour" min="0" max="1439" step="10" value="420">
           <div class="ticks" id="ticks" aria-hidden="true"></div>
+          <p class="city-summary"><span id="city-summary"></span><span id="bike-summary"></span></p>
         </div>
       </div>
 
-      <div class="panel timeline" id="city-panel">
-        <div class="track">
-          <div class="track-head">
-            <label for="fcst">도시데이터 12시간 예측</label>
-            <output id="fcst-label" for="fcst">지금</output>
-          </div>
-          <input type="range" id="fcst" min="0" max="12" step="1" value="0">
-          <div class="fcst-ticks" id="fcst-ticks" aria-hidden="true"></div>
-          <p class="city-summary" id="city-summary" aria-live="polite"></p>
+      <section class="panel reco" id="reco" aria-labelledby="reco-title">
+        <div class="panel-head">
+          <h2 id="reco-title">어디로 무엇을 타고 갈까</h2>
+          <small id="reco-from">역을 고르면 그 역에서 출발</small>
         </div>
-      </div>
+        <ol class="reco-list" id="reco-list"></ol>
+        <p class="basis" id="reco-basis"></p>
+      </section>
 
       <section class="panel" id="history-panel" hidden aria-live="polite">
         <div class="history-head">
@@ -446,8 +469,11 @@
        개찰구를 지난 승하차 기준입니다. 갈아타는 사람은 포함되지 않습니다.<br>
        역이 한가한 정도이고, 열차 안 혼잡도와는 다를 수 있습니다.<br>
        도시데이터 인구와 12시간 예측은 서울시가 추정해 범위로 알려 주는 값입니다(5분마다 갱신).<br>
-       장소별 붐빔 기록은 공공 API에 없어 이 서비스가 5분마다 받아 쌓은 값입니다. 수집이 멈춘 동안은 비어 있습니다.</p>
-    <p>데이터: 서울시 지하철 호선별 역별 시간대별 승하차 인원 정보(2026년 9월), 서울시 역사마스터 정보, 서울시 지하철 실시간 열차 위치정보, 서울시 실시간 도시데이터(인구), 서울시 주요 121장소 영역 — 서울특별시, 공공누리 제1유형(출처 표시)</p>
+       장소별 붐빔 기록은 공공 API에 없어 이 서비스가 5분마다 받아 쌓은 값입니다. 수집이 멈춘 동안은 비어 있습니다.<br>
+       시간 슬라이더는 시각만 맞춥니다. 지하철은 9월 평균, 붐빔은 오늘의 지금·12시간 예측(그 밖의 시각은 회색), 따릉이는 2026년 6월 13일(토) 하루 기록입니다.<br>
+       따릉이 이동선은 대여소에서 반납소까지의 직선이며 실제 경로가 아닙니다. 같은 대여소 반납은 그리지 않고, 00–03시는 그날 새벽 기록을 하루 끝에 붙였습니다.<br>
+       추천은 거리·운행 여부·역 붐빔·근처 대여소만 보는 단순 규칙이고, 실제 경로·소요 시간·남은 자전거 수는 따지지 않습니다.</p>
+    <p>데이터: 서울시 지하철 호선별 역별 시간대별 승하차 인원 정보(2026년 9월), 서울시 역사마스터 정보, 서울시 지하철 실시간 열차 위치정보, 서울시 실시간 도시데이터(인구), 서울시 주요 121장소 영역, 서울특별시 공공자전거 대여이력 정보(2026년 6월 13일), 공공자전거 대여소 정보(2026년 6월 기준) — 서울특별시, 공공누리 제1유형(출처 표시)</p>
   </footer>
 </div>
 
@@ -462,7 +488,9 @@ import { SUBWAY_CSV, STATION_MASTER_CSV, fetchCsv, toSubwayRows, mergeStations, 
 import { SUBWAY_LINES, DUPLICATE_STATIONS, parseStop } from "./subway-lines.mjs";
 import { lineGeometry, placeTrain } from "./train-positions.mjs";
 import { fetchAreas } from "./citydata-areas.mjs";
-import { NEARBY_RADIUS_M, nearbyAreas } from "./nearby-places.mjs";
+import { NEARBY_RADIUS_M, distanceM, distanceToArea, itemsNearArea, nearbyAreas } from "./nearby-places.mjs";
+import { SERVICE_START_S, dockActivity, loadBikeTrips, toServiceDay } from "./bike-trips.mjs";
+import { DOCK_RADIUS_M, RECOMMEND_LIMIT, crowdAtHour, recommend } from "./recommend.mjs";
 import { PLACE_ALERT_LEVELS, STATION_ALERT_RATIOS, activeAlerts, kstHour, newAlerts, throttleAlerts } from "./alerts.mjs";
 import { DB_DOWN_MESSAGE, dbErrorText } from "./db-status.mjs";
 
@@ -498,6 +526,7 @@ let windowId = DEFAULT_WINDOW_ID;
 let days = 30;          // 기준 달의 일수
 let yMax = 0;           // 2D 차트와 3D 기둥이 함께 쓰는 눈금
 let refreshMap = () => {};
+let mapReady = false;   // 3D 지도와 역 목록이 준비됐는지. 그 전에는 붐빔 요약·따릉이·추천 카드를 그리지 않는다
 
 const selectedRow = () => selected && (selected.line ? selected.entry.byLine.get(selected.line) : selected.entry.merged);
 
@@ -513,41 +542,69 @@ function currentWindow() {
 }
 const windowSpan = (hours) => (hours.length > 1 ? `${pad(hours[0])}–${pad(hours.at(-1))}시대` : hourLabel(hours[0]));
 
-// 슬라이더 표시. 3D 기둥은 refreshMap으로 함께 바꾼다.
+// 시간 슬라이더 하나로 지하철·붐빔·따릉이를 함께 움직인다. 값은 운행 하루(04:00–다음 날 03:59)의 분이다.
+// 지하철 기둥은 그 시간대, 도시데이터 영역은 그 시의 지금·예측 값, 따릉이 이동선은 그 분까지. 3D는 refreshMap으로 함께 바꾼다.
 const slider = document.getElementById("hour");
 const output = document.getElementById("hour-label");
-const showHour = () => {
-  const i = Number(slider.value);
-  output.textContent = hourLabel(HOURS[i]);
-  [...ticks.children].forEach((t, j) => t.classList.toggle("current", j === i));
-  renderTop5();
+const DAY_MIN = 24 * 60;
+let minute = Number(slider.value); // 04:00부터 지난 분. 재생 중에는 소수
+let shownHour = -1;                // 시간대가 바뀔 때만 TOP 5·붐빔 요약·추천을 다시 그린다
+const hourIdx = () => Math.floor(minute / 60); // HOURS 번호
+const clockText = (m) => `${pad(HOURS[Math.floor(m / 60)])}:${pad(Math.floor(m) % 60)}`;
+// 지금(KST) 시각을 운행 하루의 분으로
+const nowMinute = (d = new Date()) => (kstHour(d) * 60 + d.getUTCMinutes() - SERVICE_START_S / 60 + DAY_MIN) % DAY_MIN;
+
+function setMinute(m) {
+  minute = ((m % DAY_MIN) + DAY_MIN) % DAY_MIN;
+  const i = hourIdx();
+  slider.value = String(Math.round(minute));
+  output.textContent = clockText(minute);
+  slider.setAttribute("aria-valuetext", `${clockText(minute)}, ${hourLabel(HOURS[i])}`);
+  if (i !== shownHour) {
+    shownHour = i;
+    [...ticks.children].forEach((t, j) => t.classList.toggle("current", j === i));
+    renderTop5();
+    if (mapReady) {
+      showCityHour();
+      renderReco();
+    }
+  }
+  if (mapReady) showBikeCount();
   refreshMap();
-};
+}
 slider.addEventListener("input", () => {
   stop(); // 손으로 옮기면 재생을 멈춘다
-  showHour();
+  setMinute(Number(slider.value));
+});
+document.getElementById("hour-now").addEventListener("click", () => {
+  stop();
+  setMinute(nowMinute());
 });
 
-// 재생: 한 시간대씩 넘기고 03시대 다음은 04시대로 돌아간다.
+// 재생: 한 시간을 HOUR_MS에 흘려 보내고 03:59 다음은 04:00으로 돌아간다.
 const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
-const STEP_MS = 900;
+const STEP_MS = 900;    // 시간대가 바뀔 때 기둥 높이가 바뀌는 시간의 기준
+const HOUR_MS = 2000;   // 재생 속도: 1시간 = 2초(하루 48초)
 const play = document.getElementById("play");
-let timer = null;
+let raf = 0, lastFrame = 0;
 function stop() {
-  clearInterval(timer);
-  timer = null;
+  cancelAnimationFrame(raf);
+  raf = 0;
   play.textContent = "▶";
-  play.setAttribute("aria-label", "시간대 자동 재생");
+  play.setAttribute("aria-label", "시각 자동 재생");
+}
+function frame(now) {
+  setMinute(minute + ((now - lastFrame) / HOUR_MS) * 60);
+  lastFrame = now;
+  raf = requestAnimationFrame(frame);
 }
 function start() {
-  timer = setInterval(() => {
-    slider.value = (Number(slider.value) + 1) % HOURS.length;
-    showHour();
-  }, STEP_MS);
+  lastFrame = performance.now();
+  raf = requestAnimationFrame(frame);
   play.textContent = "❚❚";
-  play.setAttribute("aria-label", "시간대 자동 재생 멈춤");
+  play.setAttribute("aria-label", "시각 자동 재생 멈춤");
 }
-play.addEventListener("click", () => (timer ? stop() : start()));
+play.addEventListener("click", () => (raf ? stop() : start()));
 
 // ---- 시간 창 ----
 document.querySelectorAll(".preset").forEach((btn) => {
@@ -641,7 +698,7 @@ top5Empty.textContent = "이 시간대는 열차가 거의 다니지 않아 승�
 top5Empty.hidden = true;
 top5El.append(top5Empty);
 function renderTop5() {
-  const i = Number(slider.value);
+  const i = hourIdx();
   top5Hour.textContent = hourLabel(HOURS[i]);
   // 02·03시대처럼 한 달에 몇 명뿐인 시간대는 "0명"으로 보이므로 하루 평균 0.5명(반올림 1명) 미만은 뺀다.
   const top = entries.filter((e) => e.daily[i] >= 0.5).sort((a, b) => b.daily[i] - a.daily[i]).slice(0, TOP_N);
@@ -1053,11 +1110,12 @@ function render() {
   renderChart(row, win, quiet);
   renderNearby();
   renderTop5();
+  renderReco();
   refreshMap();
   updateStationStar();
 }
 render();
-showHour();
+setMinute(nowMinute()); // 처음에는 지금 시각(붐빔이 실시간 값과 맞는다)
 
 // ---- 3D 지도 ----
 
@@ -1167,7 +1225,8 @@ trainsToggle.addEventListener("click", () => {
 });
 
 // ---- 실시간 도시데이터 ----
-// 주요 121장소 영역을 추정 인구만큼 솟게 하고 혼잡도 단계로 칠한다. 슬라이더 0 = 지금, 1–12 = 1–12시간 뒤 예측.
+// 주요 121장소 영역을 추정 인구만큼 솟게 하고 혼잡도 단계로 칠한다. 시간 슬라이더의 시가 지금이면 지금 값,
+// 12시간 안이면 그 시 예측, 그 밖(지나간 시각 등)이면 값 없음(회색)이다.
 // 서버는 5분에 한 번만 121곳을 묻고, 화면은 보이고 "숨기기"를 누르지 않았을 때만 CITY_MS마다 다시 받는다.
 const CITY_MS = 5 * 60_000;
 const CITY_MAX_ELEVATION_M = 5000; // 영역 높이: 인구 눈금(cityMax) = 5km
@@ -1179,9 +1238,6 @@ const CONGEST = [
 const CONGEST_NONE_RGB = cssRgb("--congest-none");
 const cityStatus = document.getElementById("city-status");
 const cityToggle = document.getElementById("city-toggle");
-const fcst = document.getElementById("fcst");
-const fcstLabel = document.getElementById("fcst-label");
-const fcstTicks = document.getElementById("fcst-ticks");
 const citySummary = document.getElementById("city-summary");
 let cityPolys = [];  // PolygonLayer 항목 { area, polygon }. 여러 조각인 장소(북서울꿈의숲)는 조각마다 하나
 let cityAreas = [];  // 영역 zip의 장소 { code, category, name, polygons, live }
@@ -1193,37 +1249,29 @@ let cityStamp = 0;   // 새 값을 받을 때마다 늘려 영역 높이·색을
 let cityLoaded = false; // 실시간 값을 한 번이라도 받았는지(장소 알림의 기준점을 잡을 수 있는지)
 
 document.getElementById("city-legend").innerHTML = CONGEST.map((c) => `<span><i style="background: var(${c.css})"></i>${c.level}</span>`).join("");
-for (let k = 0; k <= 12; k++) {
-  const t = document.createElement("span");
-  t.textContent = k ? `+${k}` : "지금";
-  fcstTicks.append(t);
-}
 
-// 장소의 k단계 값(0 = 지금, k = k시간 뒤 예측). 없으면 null. 인구는 범위의 가운데 값을 쓴다.
-function citySnap(area, k) {
-  const v = k ? area.live?.forecast[k - 1] : area.live?.now;
+// 장소의 그 시(0–23) 값(지금 또는 예측, forecast로 구분). hour가 null이면 지금 값. 없으면 null.
+// 인구는 범위의 가운데 값을 쓴다.
+function citySnap(area, hour = null) {
+  const v = hour === null ? area.live?.now : crowdAtHour(area.live, hour);
   if (!v || v.min === null || v.max === null) return null;
   return { ...v, mid: (v.min + v.max) / 2 };
 }
+const snapWhen = (v) => (v.forecast ? `${clock(v.time)} 예측` : `지금(${clock(v.time)})`);
 const clock = (t) => String(t ?? "").slice(11, 16); // "2026-10-12 13:40" → "13:40"
 const range = (v) => (v.min === v.max ? `${fmt(v.min)}명` : `${fmt(v.min)}–${fmt(v.max)}명`);
 const congestRgb = (level) => CONGEST.find((c) => c.level === level)?.rgb ?? CONGEST_NONE_RGB;
 
-function showForecast() {
-  const k = Number(fcst.value);
-  [...fcstTicks.children].forEach((t, j) => t.classList.toggle("current", j === k));
-  const live = cityAreas.filter((a) => a.live);
-  const time = clock(live.map((a) => citySnap(a, k)).find(Boolean)?.time);
-  fcstLabel.textContent = (k ? `${k}시간 뒤` : "지금") + (time ? ` · ${time}` : "");
-  fcst.setAttribute("aria-valuetext", fcstLabel.textContent);
-  const counts = CONGEST.map((c) => live.filter((a) => citySnap(a, k)?.level === c.level).length);
-  citySummary.innerHTML = live.length
-    ? CONGEST.map((c, j) => `<span><i style="background: var(${c.css})"></i>${c.level} ${fmt(counts[j])}곳</span>`).join(" · ")
-    : "";
+// 슬라이더 아래 붐빔 요약: 그 시에 단계별 몇 곳인지
+function showCityHour() {
+  const hour = HOURS[hourIdx()];
+  const snaps = cityAreas.map((a) => citySnap(a, hour)).filter(Boolean);
+  const counts = CONGEST.map((c) => snaps.filter((v) => v.level === c.level).length);
+  citySummary.innerHTML = !showCity || !cityAreas.some((a) => a.live) ? ""
+    : snaps.length ? `붐빔 ${snapWhen(snaps[0])}: ` + CONGEST.map((c, j) => `<i style="background: var(${c.css})"></i>${c.level} ${fmt(counts[j])}곳`).join(" · ")
+    : `붐빔: ${hourLabel(hour)}는 지금·12시간 예측 범위 밖이라 영역을 회색으로 둡니다.`;
   refreshMap();
 }
-fcst.addEventListener("input", showForecast);
-showForecast();
 
 async function loadCity() {
   try {
@@ -1237,7 +1285,8 @@ async function loadCity() {
     cityStamp++;
     const unknown = data.areas.filter((a) => !cityAreas.some((c) => c.code === a.code));
     if (unknown.length) console.warn("영역 zip에 없어 지도에서 뺀 장소", unknown.map((a) => `${a.code} ${a.name}`));
-    const mids = cityAreas.flatMap((a) => Array.from({ length: 13 }, (_, k) => citySnap(a, k)?.mid ?? 0));
+    const mids = cityAreas.flatMap((a) => [a.live?.now, ...(a.live?.forecast ?? [])]
+      .map((v) => (v && v.min !== null && v.max !== null ? (v.min + v.max) / 2 : 0)));
     cityMax = Math.max(...mids) > 0 ? niceMax(Math.max(...mids)) : 0;
     const got = cityAreas.filter((a) => a.live).length;
     const at = new Date(data.updatedAt).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" });
@@ -1255,8 +1304,9 @@ async function loadCity() {
     cityStamp++;
     cityStatus.textContent = `실시간 도시데이터를 불러오지 못했습니다: ${err.message}`;
   }
-  showForecast();
+  showCityHour();
   renderNearby();
+  renderReco();
   checkAlerts();
 }
 // 장소 알림이 켜져 있으면 레이어를 숨기거나 탭이 뒤에 있어도 계속 받는다(알림은 그때 쓸모 있다).
@@ -1275,19 +1325,19 @@ cityToggle.addEventListener("click", () => {
   cityToggle.textContent = showCity ? "숨기기" : "보이기";
   cityToggle.setAttribute("aria-label", showCity ? "실시간 도시데이터 숨기기" : "실시간 도시데이터 보이기");
   cityToggle.setAttribute("aria-pressed", String(showCity));
-  document.getElementById("city-panel").hidden = !showCity;
   pollCity();
-  refreshMap();
+  showCityHour();
 });
 
 function cityTooltip(area) {
-  const k = Number(fcst.value);
-  const v = citySnap(area, k);
+  const hour = HOURS[hourIdx()];
+  const v = citySnap(area, hour);
   const head = `<b>${esc(area.name)}</b> <small>${esc(area.category)}</small><br>`;
-  if (!v) return head + (area.live ? `${k}시간 뒤 예측이 없습니다` : "실시간 값을 받지 못했습니다");
-  return head + `${k ? `${k}시간 뒤 예측` : "지금"} 혼잡도 <b>${esc(v.level)}</b> · 인구 <b>${range(v)}</b><br>`
-    + (k ? "" : `<small>${esc(area.live.message)}</small><br>`)
-    + `<small>${esc(v.time)} ${k ? "예측" : "기준"}</small><br><small>눌러서 최근 24시간 기록 보기</small>`;
+  if (!v) return head + (area.live ? `${hourLabel(hour)} 값이 없습니다(지금·12시간 예측 범위 밖)` : "실시간 값을 받지 못했습니다")
+    + "<br><small>눌러서 최근 24시간 기록 보기</small>";
+  return head + `${v.forecast ? `${clock(v.time)} 예측` : "지금"} 혼잡도 <b>${esc(v.level)}</b> · 인구 <b>${range(v)}</b><br>`
+    + (v.forecast ? "" : `<small>${esc(area.live.message)}</small><br>`)
+    + `<small>${esc(v.time)} ${v.forecast ? "예측" : "기준"}</small><br><small>눌러서 최근 24시간 기록 보기</small>`;
 }
 
 // ---- 답 카드: 고른 역에서 NEARBY_RADIUS_M 안의 장소와 그 장소의 지금 혼잡도. 누르면 붐빔 기록을 연다. ----
@@ -1299,7 +1349,7 @@ function renderNearby() {
   if (nearbyFor?.station !== station) nearbyFor = { station, list: nearbyAreas(station.position, cityAreas) };
   nearbyEl.hidden = !nearbyFor.list.length;
   nearbyEl.querySelector("ul").replaceChildren(...nearbyFor.list.map(({ area, distanceM }) => {
-    const v = citySnap(area, 0);
+    const v = citySnap(area);
     const where = distanceM ? `${fmt(Math.round(distanceM / 10) * 10)}m` : "역 포함";
     const li = document.createElement("li");
     li.innerHTML = `<button type="button"><i style="background: var(${congestCss(v?.level)})"></i>`
@@ -1311,6 +1361,179 @@ function renderNearby() {
     return li;
   }));
   nearbyEl.querySelector("h3").title = `역에서 영역 경계까지 ${fmt(NEARBY_RADIUS_M)}m 안, 가까운 순`;
+}
+
+// ---- 따릉이 이동 ----
+// 2026-06-13(토) 하루 대여 기록(bike.html과 같은 재생용 JSON)을 운행 하루(04:00–다음 날 04:00)로 맞춰 슬라이더 시각까지 움직인다.
+// 오늘의 자전거가 아니라 그날 같은 시각의 기록이다. 같은 대여소 반납(이동선이 없는 이용)은 그리지 않는다.
+const BIKE_TRAIL_S = 1200; // 이동선 꼬리: 지나온 20분
+const BIKE_COLOR = [...cssRgb("--bike"), 170];
+// 더하기 혼합: 많이 다니는 길일수록 밝다. 깊이는 쓰지 않고 검사만 해서 기둥 뒤로 지나가는 선은 가려진다.
+const BIKE_BLEND = {
+  depthWriteEnabled: false,
+  blendColorOperation: "add", blendColorSrcFactor: "src-alpha", blendColorDstFactor: "one",
+  blendAlphaOperation: "add", blendAlphaSrcFactor: "one", blendAlphaDstFactor: "one-minus-src-alpha",
+};
+const bikeStatus = document.getElementById("bike-status");
+const bikeToggle = document.getElementById("bike-toggle");
+const bikeSummary = document.getElementById("bike-summary");
+let showBike = true;
+let bike = null;     // { data(TripsLayer 바이너리), movingAt(운행 하루 초별 이동 중 대수), docks [{ key, position }], activity }
+let bikeError = "";  // 불러오지 못했을 때 이유(추천 카드 안내에 쓴다)
+const bikeTime = () => SERVICE_START_S + minute * 60;
+
+async function loadBike() {
+  try {
+    const { trips, coords } = await loadBikeTrips();
+    const day = toServiceDay(trips);
+    const moves = day.filter((t) => !t.round);
+    const endOf = (t) => Math.max(t.end, t.start + 30); // 끝이 시작보다 빠르거나 같은 기록도 보이게
+    // 경로·타임스탬프는 한 번만 만든다. 재생 중에는 currentTime만 바뀐다.
+    const pathBuf = new Float64Array(moves.length * 4);
+    const timeBuf = new Float32Array(moves.length * 2);
+    const startIndices = new Uint32Array(moves.length + 1);
+    moves.forEach((t, j) => {
+      pathBuf.set(t.from, j * 4); pathBuf.set(t.to, j * 4 + 2);
+      timeBuf[j * 2] = t.start; timeBuf[j * 2 + 1] = endOf(t);
+      startIndices[j] = j * 2;
+    });
+    startIndices[moves.length] = moves.length * 2;
+    // 초 단위 이동 중 대수: 차분 배열의 누적합(운행 하루 시작 = 0초)
+    const DAY_S = DAY_MIN * 60;
+    const movingAt = new Int32Array(DAY_S + 2);
+    for (const t of moves) {
+      movingAt[Math.min(DAY_S, Math.max(0, Math.floor(t.start - SERVICE_START_S)))]++;
+      movingAt[Math.min(DAY_S + 1, Math.ceil(endOf(t) - SERVICE_START_S))]--;
+    }
+    for (let j = 1; j < movingAt.length; j++) movingAt[j] += movingAt[j - 1];
+    bike = {
+      data: { length: moves.length, startIndices, attributes: { getPath: { value: pathBuf, size: 2 }, getTimestamps: { value: timeBuf, size: 1 } } },
+      movingAt,
+      docks: Object.entries(coords).map(([key, c]) => ({ key, position: [c.lng, c.lat] })),
+      activity: dockActivity(day),
+    };
+    bikeStatus.textContent = `따릉이 이동 ${fmt(moves.length)}건 · 2026년 6월 13일(토) 기록`;
+  } catch (err) {
+    console.error(err);
+    bikeError = err.message;
+    bikeStatus.textContent = `따릉이 기록을 불러오지 못했습니다: ${err.message}`;
+  }
+  showBikeCount();
+  renderReco();
+  refreshMap();
+}
+function showBikeCount() {
+  bikeSummary.textContent = bike && showBike
+    ? `따릉이: 6월 13일(토) ${clockText(minute)}에 대여소 사이를 이동 중 ${fmt(bike.movingAt[Math.floor(minute * 60)])}대` : "";
+}
+bikeToggle.addEventListener("click", () => {
+  showBike = !showBike;
+  bikeToggle.textContent = showBike ? "숨기기" : "보이기";
+  bikeToggle.setAttribute("aria-label", showBike ? "따릉이 이동 숨기기" : "따릉이 이동 보이기");
+  bikeToggle.setAttribute("aria-pressed", String(showBike));
+  showBikeCount();
+  refreshMap();
+});
+
+// ---- 어디로 무엇을 타고 갈까 ----
+// 슬라이더 시간대마다 recommend.mjs 규칙으로 장소와 갈 수단을 고른다. 시간대·고른 역·도시데이터·따릉이가 바뀔 때만 다시 그린다.
+// 재생 중에도 포커스가 사라지지 않게 버튼은 한 번만 만들고 글자만 바꾼다(TOP 5와 같은 방식).
+const recoList = document.getElementById("reco-list");
+const MODE_LABEL = { bike: "따릉이", subway: "지하철", walk: "걸어서", none: "어려움" };
+const recoButtons = Array.from({ length: RECOMMEND_LIMIT }, () => {
+  const li = document.createElement("li");
+  const b = document.createElement("button");
+  b.type = "button";
+  li.hidden = true;
+  b.innerHTML = `<span class="mode"></span><span class="what"><span class="head"><b></b><span class="lvl"></span></span><small></small></span>`;
+  b.addEventListener("click", () => b.area && selectPlace(b.area));
+  li.append(b);
+  recoList.append(li);
+  return b;
+});
+const recoEmpty = document.createElement("li");
+recoEmpty.className = "empty";
+recoList.append(recoEmpty);
+
+// 열차가 다니는 시간대: 모든 역 승하차 합이 가장 많은 시간대의 2% 이상(9월 기준 05–00시대).
+// 역별 피크 대비로 보면 도심 역(시청 00시대 1% 미만)은 열차가 다녀도 빠지므로 노선 전체로 본다.
+let netRunning = null;
+// 역의 그 시간대 상태. running: 열차가 다니는 시간대이고 그 역에서 하루 평균 1명 이상 오간다.
+function stationAt(entry, i) {
+  if (!netRunning) {
+    const sums = HOURS.map((_, j) => entries.reduce((a, e) => a + e.daily[j], 0));
+    netRunning = sums.map((v) => v >= Math.max(...sums) * 0.02);
+  }
+  entry.peak ??= Math.max(...entry.daily);
+  const ratio = entry.peak ? entry.daily[i] / entry.peak : 0;
+  return { name: entry.name, ratio, running: netRunning[i] && entry.daily[i] >= 1 };
+}
+// 장소마다 가장 가까운 역(500m 안)과 근처 따릉이 대여소. 장소·역·대여소는 바뀌지 않으므로 한 번만 잰다.
+const areaNear = new Map();
+function nearOf(area) {
+  let n = areaNear.get(area);
+  if (!n) {
+    const st = itemsNearArea(area.polygons, entries.filter((e) => e.station), NEARBY_RADIUS_M, (e) => e.station.position)[0];
+    areaNear.set(area, (n = { entry: st?.item ?? null, docks: null }));
+  }
+  if (!n.docks && bike) n.docks = itemsNearArea(area.polygons, bike.docks, DOCK_RADIUS_M, (d) => d.position).map((d) => d.item.key);
+  return n;
+}
+const dist = (m) => (m < 1000 ? `${fmt(Math.round(m / 10) * 10)}m` : `${(Math.round(m / 100) / 10).toLocaleString("ko-KR")}km`);
+const WHY = {
+  close: () => "걸어서 갈 만한 거리",
+  short: () => "짧은 거리라 따릉이, 출발·도착 근처에 대여소 있음",
+  busyStation: (c) => `가까운 역 ${c.station.name}: 피크의 ${pct(c.station.ratio)}로 붐비는 시간이라 따릉이`,
+  noSubway: () => "이 시간대엔 지하철이 거의 다니지 않음",
+  noStation: () => `${fmt(NEARBY_RADIUS_M)}m 안에 지하철역 없음`,
+  default: (c) => `${c.station.name}에서 내리기 · 역은 피크의 ${pct(c.station.ratio)}`,
+  busy: (c) => `${c.station.name}에서 내리기 · 역이 피크의 ${pct(c.station.ratio)}로 붐빔(따릉이로는 멀거나 대여소 없음)`,
+};
+
+function renderReco() {
+  if (!mapReady) return;
+  const i = hourIdx(), hour = HOURS[i];
+  const from = selected?.entry.station ? selected.entry : null;
+  document.getElementById("reco-title").textContent = `어디로 무엇을 타고 갈까 · ${hourLabel(hour)}`;
+  document.getElementById("reco-from").textContent = from ? `${from.name}에서 출발` : "역을 고르면 그 역에서 출발";
+  const origin = from && {
+    ...stationAt(from, i),
+    docks: bike ? bike.docks.filter((d) => distanceM(from.station.position, d.position) <= DOCK_RADIUS_M).length : 0,
+  };
+  const candidates = cityAreas.map((area) => {
+    const n = nearOf(area);
+    return {
+      area, crowd: citySnap(area, hour), station: n.entry && stationAt(n.entry, i), docks: n.docks?.length ?? 0,
+      bikeEvents: (n.docks ?? []).reduce((a, key) => a + (bike.activity.get(key)?.[i] ?? 0), 0),
+      distanceM: from ? distanceToArea(from.station.position, area.polygons) : null,
+    };
+  });
+  const { basis, items } = recommend(candidates, { origin });
+  recoButtons.forEach((b, k) => {
+    const c = items[k];
+    b.parentElement.hidden = !c;
+    b.area = c?.area ?? null;
+    if (!c) return;
+    const [mode, what] = b.children;
+    const [head, small] = what.children;
+    mode.className = `mode ${c.mode}`;
+    mode.textContent = MODE_LABEL[c.mode];
+    head.firstChild.textContent = c.area.name;
+    const lvl = basis === "crowd" ? `${c.crowd.level} · ${snapWhen(c.crowd)}` : `가까운 역 피크의 ${pct(c.station.ratio)}`;
+    head.lastChild.innerHTML = (basis === "crowd" ? `<i style="background: var(${congestCss(c.crowd.level)})"></i>` : "") + esc(lvl);
+    const parts = [c.distanceM !== null && (c.distanceM ? `${from.name}에서 ${dist(c.distanceM)}` : "출발 역이 이 장소 안"), WHY[c.why](c)];
+    if (c.mode === "bike") parts.push(`근처 대여소 ${fmt(c.docks)}곳, 6월 13일 이 시간대 대여·반납 ${fmt(c.bikeEvents)}건`);
+    small.textContent = parts.filter(Boolean).join(" · ");
+    b.setAttribute("aria-label", `${k + 1}위 ${c.area.name}, ${MODE_LABEL[c.mode]}, ${lvl}. ${small.textContent}. 누르면 붐빔 기록 보기`);
+  });
+  recoEmpty.hidden = items.length > 0;
+  recoEmpty.textContent = cityAreas.length ? "이 시각에 추천할 곳이 없습니다." : "장소 영역을 불러오는 중…";
+  const live = cityAreas.some((a) => a.live);
+  document.getElementById("reco-basis").textContent = (basis === "crowd"
+    ? "장소는 그 시각 혼잡도(실시간 도시데이터의 지금·12시간 예측)가 낮은 순입니다."
+    : `${live ? `${hourLabel(hour)}는 도시데이터 지금·12시간 예측 범위 밖이라` : "실시간 도시데이터가 없어"} 장소에서 가까운 역의 9월 승하차가 피크 대비 낮은 순으로 골랐습니다.`)
+    + ` 역은 9월 평균, 따릉이는 6월 13일(토) 기록이고, 실제 경로·소요 시간·남은 자전거 수는 따지지 않습니다.`
+    + (bike ? "" : bikeError ? " 따릉이 기록을 불러오지 못해 따릉이는 고르지 않았습니다." : " 따릉이 기록을 불러오는 중이라 아직 따릉이는 고르지 않습니다.");
 }
 
 // ---- 장소별 붐빔 기록 ----
@@ -1562,10 +1785,16 @@ Promise.all([fetchCsv(SUBWAY_CSV), fetchCsv(STATION_MASTER_CSV)])
     const paths = linePaths(master);
     trainGeo = lineGeometry(master);
 
-    const layers = (i, k = Number(fcst.value), cityOn = showCity && cityAreas.some((a) => a.live)) => [
+    const layers = (i, hour = HOURS[i], cityOn = showCity && cityAreas.some((a) => a.live)) => [
       new deck.PathLayer({
         id: "lines", data: paths, getPath: (d) => d.path, getColor: LINE_COLOR,
         getWidth: 2, widthUnits: "pixels", widthMinPixels: 1,
+      }),
+      // 따릉이 이동선은 바닥에 붙어 있어 기둥·영역보다 먼저 그린다(기둥 뒤로 지나가면 가려진다).
+      new deck.TripsLayer({
+        id: "bike", data: bike?.data ?? [], visible: showBike && Boolean(bike),
+        getColor: BIKE_COLOR, widthUnits: "pixels", getWidth: 2, capRounded: true,
+        trailLength: BIKE_TRAIL_S, currentTime: bikeTime(), fadeTrail: true, parameters: BIKE_BLEND,
       }),
       new deck.ColumnLayer({
         id: "stations", data: stations, diskResolution: 16, radius: COLUMN_RADIUS_M, extruded: true, pickable: true,
@@ -1585,14 +1814,14 @@ Promise.all([fetchCsv(SUBWAY_CSV), fetchCsv(STATION_MASTER_CSV)])
       new deck.PolygonLayer({
         id: "citydata", data: showCity ? cityPolys : [], pickable: true, extruded: true,
         getPolygon: (d) => d.polygon,
-        getElevation: (d) => citySnap(d.area, k)?.mid ?? 0,
+        getElevation: (d) => citySnap(d.area, hour)?.mid ?? 0,
         elevationScale: cityMax ? CITY_MAX_ELEVATION_M / cityMax : 0,
-        getFillColor: (d) => { const v = citySnap(d.area, k); return v ? [...congestRgb(v.level), CITY_ALPHA] : [...CONGEST_NONE_RGB, 90]; },
+        getFillColor: (d) => { const v = citySnap(d.area, hour); return v ? [...congestRgb(v.level), CITY_ALPHA] : [...CONGEST_NONE_RGB, 90]; },
         autoHighlight: true, highlightColor: [232, 230, 223, 120],
         // 기록을 보고 있는 장소는 --answer 테두리로 표시한다.
         wireframe: true,
         getLineColor: (d) => (d.area === historyArea ? [...ANSWER_RGB, 255] : [0, 0, 0, 0]),
-        updateTriggers: { getElevation: [k, cityStamp], getFillColor: [k, cityStamp], getLineColor: historyArea?.code },
+        updateTriggers: { getElevation: [hour, cityStamp], getFillColor: [hour, cityStamp], getLineColor: historyArea?.code },
         transitions: reduceMotion ? {} : { getElevation: { duration: 400, easing: (t) => t * (2 - t) } },
         onClick: ({ object }) => object && selectPlace(object.area),
       }),
@@ -1612,15 +1841,19 @@ Promise.all([fetchCsv(SUBWAY_CSV), fetchCsv(STATION_MASTER_CSV)])
       initialViewState: viewState,
       controller: true,
       onViewStateChange: ({ viewState: vs }) => { viewState = vs; },
-      layers: layers(Number(slider.value)),
+      layers: layers(hourIdx()),
       getCursor: ({ isHovering, isDragging }) => (isDragging ? "grabbing" : isHovering ? "pointer" : "grab"),
       getTooltip: ({ object, layer }) => object && {
-        html: layer.id === "trains" ? trainTooltip(object) : layer.id === "citydata" ? cityTooltip(object.area) : `<b>${object.name}</b> <small>${object.lines}</small><br>${hourLabel(HOURS[Number(slider.value)])} 하루 평균 <b>${fmt(object.daily[Number(slider.value)])}명</b><br><small>눌러서 이 역 고르기</small>`,
+        html: layer.id === "trains" ? trainTooltip(object) : layer.id === "citydata" ? cityTooltip(object.area) : `<b>${object.name}</b> <small>${object.lines}</small><br>${hourLabel(HOURS[hourIdx()])} 하루 평균 <b>${fmt(object.daily[hourIdx()])}명</b><br><small>눌러서 이 역 고르기</small>`,
         style: { background: "#171b23", color: "#e8e6df", border: "1px solid #343a48", borderRadius: "8px", fontSize: "13px", padding: "8px 10px" },
       },
     });
-    refreshMap = () => deckgl.setProps({ layers: layers(Number(slider.value)) });
+    refreshMap = () => deckgl.setProps({ layers: layers(hourIdx()) });
+    mapReady = true;
     renderTop5();
+    showCityHour();
+    renderReco();
+    loadBike();
     showResults(); // 불러오는 동안 입력한 검색어가 있으면 결과를 보여 준다
     renderFavorites();
     pollTrains();
