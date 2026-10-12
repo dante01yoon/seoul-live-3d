@@ -297,7 +297,7 @@
     <aside class="side">
       <section class="panel">
         <label for="q">역 찾기</label>
-        <input id="q" class="search" type="search" placeholder="역 이름 일부 (예: 가산)" autocomplete="off">
+        <input id="q" class="search" type="search" placeholder="역 이름 일부나 초성 (예: 가산, ㄱㄴ)" autocomplete="off">
         <ul class="results" id="results" aria-label="검색 결과"></ul>
         <div class="chips" id="lines" role="group" aria-label="노선"></div>
         <div class="top5-head"><span id="top5-title">지금 시간대 혼잡 TOP 5</span><output id="top5-hour" for="hour"></output></div>
@@ -465,6 +465,7 @@ import { fetchAreas } from "./citydata-areas.mjs";
 import { NEARBY_RADIUS_M, nearbyAreas } from "./nearby-places.mjs";
 import { PLACE_ALERT_LEVELS, STATION_ALERT_RATIOS, activeAlerts, kstHour, newAlerts, throttleAlerts } from "./alerts.mjs";
 import { DB_DOWN_MESSAGE, dbErrorText } from "./db-status.mjs";
+import { norm, searchStations } from "./station-search.mjs";
 
 const pad = (h) => String(h).padStart(2, "0");
 const hourLabel = (h) => `${pad(h)}시대`;
@@ -491,7 +492,7 @@ winStart.value = HOURS.indexOf(defaultHours[0]);
 winEnd.value = HOURS.indexOf(defaultHours.at(-1));
 
 // ---- 상태 ----
-let entries = [];       // 역 검색 항목(환승역은 합친 행 하나). { id, name, lines, merged, byLine, station }
+let entries = [];       // 역 검색 항목(환승역은 합친 행 하나). { id, name, lines, merged, byLine, station, daily, riders }
 const entryByName = new Map(); // 역명 → entries 항목(즐겨찾기 역은 역명으로 가리킨다)
 let selected = null;    // { entry, line } — line이 null이면 노선 합산
 let windowId = DEFAULT_WINDOW_ID;
@@ -565,27 +566,9 @@ const q = document.getElementById("q");
 const results = document.getElementById("results");
 const linesEl = document.getElementById("lines");
 
-// 공백을 무시하고, 괄호 부역명은 뺀 이름을 먼저 본다("잠실" → 잠실(송파구청)).
-const norm = (s) => s.replace(/\s/g, "").toLowerCase();
-const baseName = (s) => s.replace(/\(.*?\)/g, "");
+// 이름 일부나 초성으로 찾는다("ㄱㄴ" → 강남). 점수·정렬은 station-search.mjs.
 const MAX_RESULTS = 8;
-function search(text) {
-  const k = norm(text);
-  if (!k) return [];
-  const score = (e) => {
-    const b = norm(baseName(e.name));
-    if (b === k) return 0;
-    if (b.startsWith(k)) return 1;
-    if (b.includes(k)) return 2;
-    return norm(e.name).includes(k) ? 3 : -1; // 부역명으로도 찾는다(예: DDP)
-  };
-  return entries
-    .map((e) => [score(e), e])
-    .filter(([s]) => s >= 0)
-    .sort((a, b) => a[0] - b[0] || a[1].name.localeCompare(b[1].name, "ko"))
-    .slice(0, MAX_RESULTS)
-    .map(([, e]) => e);
-}
+const search = (text) => searchStations(entries, text, MAX_RESULTS);
 
 function showResults() {
   results.replaceChildren();
@@ -1545,6 +1528,7 @@ Promise.all([fetchCsv(SUBWAY_CSV), fetchCsv(STATION_MASTER_CSV)])
         byLine: new Map(rows.filter((r) => r.STTN === merged.STTN && merged.LINES.includes(r.SBWY_ROUT_LN_NM)).map((r) => [r.SBWY_ROUT_LN_NM, r])),
         station: null, daily: HOURS.map((h) => total(merged, h) / days),
       };
+      entry.riders = entry.daily.reduce((a, v) => a + v, 0); // 검색에서 점수가 같으면 많은 역 먼저
       const at = coordOf(merged);
       if (at) {
         entry.station = { entry, name: merged.STTN, lines: merged.SBWY_ROUT_LN_NM, position: [at[1], at[0]], daily: entry.daily };
