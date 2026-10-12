@@ -18,9 +18,11 @@
     --answer-ink: #1a1406;   /* --answer 위 글자 */
     --bar: #5b6273;          /* 시별 대여 막대 */
     --bar-now: #f2b552;      /* 지금 시각이 속한 시간대 막대 */
-    --trip: #fff3bf;         /* 이동선: 지하철 노선색과 겹치지 않는 옅은 노랑 */
+    --trip: #fff6d6;         /* 이동선 심: 지하철 노선색과 겹치지 않는 옅은 노랑 */
+    --trip-glow: #ffb43a;    /* 이동선 번짐: 겹칠수록 밝아진다(더하기 혼합) */
     --stay: #ff8787;         /* 같은 대여소 반납: 대여소 위 점 */
-    --station: #4a5163;      /* 대여소 점 */
+    --station: #3a4a6b;      /* 대여소 점: 밤 지도 위 희미한 불빛 */
+    --night: #03050b;        /* 지도 바탕(밤) */
   }
   * { box-sizing: border-box; }
   body { font-family: system-ui, sans-serif; background: var(--surface); color: var(--text-primary); margin: 24px; }
@@ -37,7 +39,7 @@
   .badges b { font-variant-numeric: tabular-nums; color: var(--text-primary); }
 
   .scene { position: relative; height: 66vh; min-height: 360px; border: 1px solid var(--grid); border-radius: 16px;
-           overflow: hidden; background: #0c0f15; }
+           overflow: hidden; background: radial-gradient(ellipse at 50% 40%, #0a1022 0%, var(--night) 70%); }
   .scene-map { position: absolute; inset: 0; }
   .scene-status { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
                   padding: 16px; text-align: center; color: var(--text-secondary); pointer-events: none; }
@@ -46,7 +48,7 @@
             padding: 8px 10px; background: rgba(23, 27, 35, 0.9); border: 1px solid var(--border); border-radius: 10px;
             font-size: 12px; color: var(--text-secondary); max-width: calc(100% - 24px); }
   .legend i { display: inline-block; vertical-align: middle; margin-right: 6px; }
-  .legend .l-trip { width: 18px; height: 3px; background: var(--trip); }
+  .legend .l-trip { width: 18px; height: 3px; background: var(--trip); box-shadow: 0 0 6px 1px var(--trip-glow); }
   .legend .l-stay { width: 10px; height: 10px; border: 2px solid var(--stay); border-radius: 50%; }
   .legend .l-st { width: 6px; height: 6px; background: var(--station); border-radius: 50%; margin: 0 6px 0 2px; }
 
@@ -108,6 +110,7 @@
       <span><i class="l-trip"></i>대여소 → 반납소 이동(꼬리가 지나온 길)</span>
       <span><i class="l-stay"></i>같은 대여소 반납: 이용하는 동안 대여소 위 점</span>
       <span><i class="l-st"></i>대여소 2,789곳</span>
+      <span class="muted">끌어서 이동 · 오른쪽 버튼(또는 Ctrl)으로 끌어서 회전·기울이기</span>
     </div>
   </section>
 
@@ -142,7 +145,7 @@
 
   <footer class="foot">
     <p>대여 기준으로 고른 기록이라 6월 12일에 빌려 13일에 반납한 이용은 없고, 24:00을 넘겨 반납한 이용(<span id="over-day"></span>건)은 24:00까지만 그리고 재생은 24:00에서 끝납니다.<br>
-       이동선은 대여소에서 반납소까지의 직선이며 실제 경로가 아닙니다. 지도 배경은 쓰지 않았습니다.</p>
+       이동선은 대여소에서 반납소까지의 직선이며 실제 경로가 아닙니다. 꼬리는 지나온 40분을 보여 주고, 겹칠수록 밝아집니다. 지도 배경(도로·강)은 쓰지 않았습니다.</p>
     <p>데이터: 서울특별시 공공자전거 대여이력 정보(2026년 6월 13일), 공공자전거 대여소 정보(2026년 6월 기준) — 서울특별시, 공공누리 제1유형(출처 표시)</p>
   </footer>
 </div>
@@ -155,7 +158,7 @@ import { loadBikeTrips, hourlyStarts } from "./bike-trips.mjs";
 const fmt = (n) => Math.round(n).toLocaleString("ko-KR");
 const reduceMotion = matchMedia("(prefers-reduced-motion: reduce)").matches;
 const DAY_S = 86400;
-const TRAIL_S = 900; // 이동선 꼬리 길이(시뮬레이션 초)
+const TRAIL_S = 2400; // 이동선 꼬리 길이(시뮬레이션 초, 40분)
 const SKIP_LABELS = { noCoords: "좌표 없음", badTime: "시각 오류", noStation: "대여소 없음", badRow: "형식 오류", noReturn: "반납 대여소 없음" };
 
 const $ = (id) => document.getElementById(id);
@@ -168,7 +171,13 @@ const cssRgb = (name) => {
   const hex = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
   return [1, 3, 5].map((k) => parseInt(hex.slice(k, k + 2), 16));
 };
-const TRIP_COLOR = [...cssRgb("--trip"), 230];
+const TRIP_COLOR = [...cssRgb("--trip"), 255], GLOW_COLOR = [...cssRgb("--trip-glow"), 60];
+// 더하기 혼합: 꼬리가 겹치는 곳(많이 다니는 길)일수록 밝게 빛난다. 바닥이 평평해 깊이 검사는 끈다.
+const ADDITIVE = {
+  depthCompare: "always", depthWriteEnabled: false,
+  blendColorOperation: "add", blendColorSrcFactor: "src-alpha", blendColorDstFactor: "one",
+  blendAlphaOperation: "add", blendAlphaSrcFactor: "one", blendAlphaDstFactor: "one-minus-src-alpha",
+};
 const STAY_FILL = [...cssRgb("--stay"), 70], STAY_LINE = [...cssRgb("--stay"), 255];
 const STATION_FILL = [...cssRgb("--station"), 150];
 
@@ -226,23 +235,29 @@ loadBikeTrips().then(({ trips, skipped, total, coords }) => {
   const layers = (time) => [
     new deck.ScatterplotLayer({
       id: "stations", data: stations, getPosition: (d) => d, getFillColor: STATION_FILL,
-      radiusUnits: "pixels", getRadius: 1.8,
+      radiusUnits: "pixels", getRadius: 1.6, billboard: true, parameters: { depthCompare: "always" },
+    }),
+    // 같은 이동을 두 번 그린다: 넓고 흐린 번짐 위에 가늘고 밝은 심.
+    new deck.TripsLayer({
+      id: "trips-glow", data: tripData, getColor: GLOW_COLOR, widthUnits: "pixels", getWidth: 6,
+      trailLength: TRAIL_S, currentTime: time, fadeTrail: true, capRounded: true, parameters: ADDITIVE,
     }),
     new deck.TripsLayer({
-      id: "trips", data: tripData, getColor: TRIP_COLOR, widthUnits: "pixels", getWidth: 1.6,
-      trailLength: TRAIL_S, currentTime: time, fadeTrail: true, capRounded: true,
+      id: "trips", data: tripData, getColor: TRIP_COLOR, widthUnits: "pixels", getWidth: 1.4,
+      trailLength: TRAIL_S, currentTime: time, fadeTrail: true, capRounded: true, parameters: ADDITIVE,
     }),
     new deck.ScatterplotLayer({
       id: "stays", data: activeStays(time), getPosition: (d) => d.position, getFillColor: STAY_FILL, stroked: true, getLineColor: STAY_LINE,
-      lineWidthUnits: "pixels", getLineWidth: 1.2, radiusUnits: "pixels", getRadius: 5,
+      lineWidthUnits: "pixels", getLineWidth: 1.2, radiusUnits: "pixels", getRadius: 5, billboard: true, parameters: { depthCompare: "always" },
     }),
   ];
 
   let time = reduceMotion ? 7 * 3600 : 0;
   const deckgl = new deck.Deck({
     parent: $("map"),
-    initialViewState: { longitude: 126.99, latitude: 37.55, zoom: matchMedia("(max-width: 600px)").matches ? 9.0 : 10.2, pitch: 0, bearing: 0 },
-    controller: true,
+    // 비스듬히 내려다보는 3D 시점. 기울이면 먼 쪽이 작아지므로 중심을 조금 남쪽으로 둔다.
+    initialViewState: { longitude: 126.99, latitude: 37.53, zoom: matchMedia("(max-width: 600px)").matches ? 9.5 : 10.8, pitch: 55, bearing: -20, maxPitch: 75 },
+    controller: { dragRotate: true, touchRotate: true },
     layers: layers(time),
     getCursor: ({ isDragging }) => (isDragging ? "grabbing" : "grab"),
   });
