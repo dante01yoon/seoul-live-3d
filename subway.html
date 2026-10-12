@@ -26,6 +26,11 @@
     --band-mid: #3a3320;     /* 하루 띠: 보통(30–60%) */
     --band-busy: #4a2422;    /* 하루 띠: 붐빔(60% 이상) */
     --train: #5ce1e6;        /* 실시간 열차 점 */
+    --congest-1: #40c057;    /* 도시데이터 혼잡도: 여유 */
+    --congest-2: #fab005;    /* 보통 */
+    --congest-3: #fd7e14;    /* 약간 붐빔 */
+    --congest-4: #f03e3e;    /* 붐빔 */
+    --congest-none: #5b6273; /* 그 시각 값 없음 */
   }
   * { box-sizing: border-box; }
   body { font-family: system-ui, sans-serif; background: var(--surface); color: var(--text-primary); margin: 24px; }
@@ -158,6 +163,18 @@
   .scene-legend .live-text { align-items: flex-start; }
   .scene-legend .live-text i { flex: none; margin-top: 4px; }
   .scene-legend .live .chip { min-height: 28px; padding: 0 10px; font-size: 12px; }
+  .scene-legend .congest { display: flex; flex-wrap: wrap; gap: 4px 10px; }
+  .scene-legend .congest span { gap: 4px; }
+
+  /* 도시데이터 예측 슬라이더 */
+  .panel[hidden] { display: none; }
+  /* 13칸이라 좁은 화면에서도 모두 들어간다(.ticks의 좁은 화면 숨김 규칙을 받지 않게 클래스를 따로 둔다). */
+  .fcst-ticks { display: grid; grid-template-columns: repeat(13, minmax(0, 1fr)); gap: 1px; }
+  .fcst-ticks span { font-size: 10px; text-align: center; padding: 2px 0; border-radius: 3px; color: var(--text-muted);
+                     font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .fcst-ticks .current { background: var(--answer); color: var(--answer-ink); font-weight: 600; }
+  .city-summary { margin: 0; font-size: 12px; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
+  .city-summary i { display: inline-block; width: 8px; height: 8px; margin-right: 4px; border-radius: 2px; }
 
   /* 시간 슬라이더 */
   .timeline { flex-direction: row; align-items: center; gap: 14px; }
@@ -274,6 +291,10 @@
           <span id="legend-scale">기둥 높이 = 하루 평균 승차+하차</span>
           <span class="live"><span class="live-text"><i class="train"></i><span id="trains-status">실시간 열차 불러오는 중…</span></span>
             <button type="button" class="chip" id="trains-toggle" aria-pressed="true" aria-label="실시간 열차 숨기기">숨기기</button></span>
+          <span class="live"><span class="live-text"><i style="background: var(--congest-2)"></i><span id="city-status">실시간 도시데이터 불러오는 중…</span></span>
+            <button type="button" class="chip" id="city-toggle" aria-pressed="true" aria-label="실시간 도시데이터 숨기기">숨기기</button></span>
+          <span class="congest" id="city-legend" aria-label="도시데이터 혼잡도 색"></span>
+          <span id="city-scale">영역 높이 = 추정 인구(범위의 가운데)</span>
         </div>
       </div>
 
@@ -288,14 +309,27 @@
           <div class="ticks" id="ticks" aria-hidden="true"></div>
         </div>
       </div>
+
+      <div class="panel timeline" id="city-panel">
+        <div class="track">
+          <div class="track-head">
+            <label for="fcst">도시데이터 12시간 예측</label>
+            <output id="fcst-label" for="fcst">지금</output>
+          </div>
+          <input type="range" id="fcst" min="0" max="12" step="1" value="0">
+          <div class="fcst-ticks" id="fcst-ticks" aria-hidden="true"></div>
+          <p class="city-summary" id="city-summary" aria-live="polite"></p>
+        </div>
+      </div>
     </main>
   </div>
 
   <footer class="foot">
     <p>한 달 합계를 일수로 나눈 값입니다. 평일과 주말이 섞여 있습니다.<br>
        개찰구를 지난 승하차 기준입니다. 갈아타는 사람은 포함되지 않습니다.<br>
-       역이 한가한 정도이고, 열차 안 혼잡도와는 다를 수 있습니다.</p>
-    <p>데이터: 서울시 지하철 호선별 역별 시간대별 승하차 인원 정보(2026년 9월), 서울시 역사마스터 정보, 서울시 지하철 실시간 열차 위치정보 — 서울특별시, 공공누리 제1유형(출처 표시)</p>
+       역이 한가한 정도이고, 열차 안 혼잡도와는 다를 수 있습니다.<br>
+       도시데이터 인구와 12시간 예측은 서울시가 추정해 범위로 알려 주는 값입니다(5분마다 갱신).</p>
+    <p>데이터: 서울시 지하철 호선별 역별 시간대별 승하차 인원 정보(2026년 9월), 서울시 역사마스터 정보, 서울시 지하철 실시간 열차 위치정보, 서울시 실시간 도시데이터(인구), 서울시 주요 121장소 영역 — 서울특별시, 공공누리 제1유형(출처 표시)</p>
   </footer>
 </div>
 
@@ -303,11 +337,12 @@
 <script src="https://cdn.jsdelivr.net/npm/deck.gl@9.0.38/dist.min.js"></script>
 <script type="module">
 // 역 검색 → 답 카드·하루 띠·2D 차트, 그리고 3D 지도(deck.gl)와 시간 재생. 지도 기둥을 눌러도 역이 골라진다.
-// 실시간 열차 위치는 server.mjs(/api/trains)가 인증키를 붙여 받아 온다. 브라우저에는 키가 없다.
+// 실시간 열차 위치(/api/trains)와 실시간 도시데이터(/api/citydata)는 server.mjs가 인증키를 붙여 받아 온다. 브라우저에는 키가 없다.
 import { HOURS, total, usageMonth, quietestInWindow, peakRatio, WINDOW_PRESETS, DEFAULT_WINDOW_ID } from "./stats.mjs";
 import { SUBWAY_CSV, STATION_MASTER_CSV, fetchCsv, toSubwayRows, mergeStations, stationLocator } from "./subway-csv.mjs";
 import { SUBWAY_LINES, DUPLICATE_STATIONS, parseStop } from "./subway-lines.mjs";
 import { lineGeometry, placeTrain } from "./train-positions.mjs";
+import { fetchAreas } from "./citydata-areas.mjs";
 
 const pad = (h) => String(h).padStart(2, "0");
 const hourLabel = (h) => `${pad(h)}시대`;
@@ -669,6 +704,7 @@ const RAMP = [cssRgb("--ramp-low"), cssRgb("--ramp-high")];
 const rampColor = (t) => RAMP[0].map((c, k) => Math.round(c + (RAMP[1][k] - c) * Math.min(1, t)));
 const ANSWER_RGB = cssRgb("--answer");
 const DIM_ALPHA = 60; // 역을 골랐을 때 다른 기둥의 불투명도(0–255)
+const CITY_ON_ALPHA = 80; // 도시데이터 영역을 보일 때 승하차 기둥의 불투명도. 혼잡도 색과 헷갈리지 않게 흐리게 한다.
 const LINE_COLOR = [70, 78, 96];
 
 const statusEl = document.getElementById("scene-status");
@@ -749,6 +785,121 @@ trainsToggle.addEventListener("click", () => {
   refreshMap();
 });
 
+// ---- 실시간 도시데이터 ----
+// 주요 121장소 영역을 추정 인구만큼 솟게 하고 혼잡도 단계로 칠한다. 슬라이더 0 = 지금, 1–12 = 1–12시간 뒤 예측.
+// 서버는 5분에 한 번만 121곳을 묻고, 화면은 보이고 "숨기기"를 누르지 않았을 때만 CITY_MS마다 다시 받는다.
+const CITY_MS = 5 * 60_000;
+const CITY_MAX_ELEVATION_M = 5000; // 영역 높이: 인구 눈금(cityMax) = 5km
+const CITY_ALPHA = 200;
+const CONGEST = [
+  { level: "여유", css: "--congest-1" }, { level: "보통", css: "--congest-2" },
+  { level: "약간 붐빔", css: "--congest-3" }, { level: "붐빔", css: "--congest-4" },
+].map((c) => ({ ...c, rgb: cssRgb(c.css) }));
+const CONGEST_NONE_RGB = cssRgb("--congest-none");
+const cityStatus = document.getElementById("city-status");
+const cityToggle = document.getElementById("city-toggle");
+const fcst = document.getElementById("fcst");
+const fcstLabel = document.getElementById("fcst-label");
+const fcstTicks = document.getElementById("fcst-ticks");
+const citySummary = document.getElementById("city-summary");
+let cityPolys = [];  // PolygonLayer 항목 { area, polygon }. 여러 조각인 장소(북서울꿈의숲)는 조각마다 하나
+let cityAreas = [];  // 영역 zip의 장소 { code, category, name, polygons, live }
+let cityMax = 0;     // 영역 높이 눈금(지금과 예측 12시간 전체의 최대 인구를 올려 잡음)
+let showCity = true;
+let cityTimer = null;
+let cityGen = 0;
+let cityStamp = 0;   // 새 값을 받을 때마다 늘려 영역 높이·색을 다시 계산하게 한다
+
+document.getElementById("city-legend").innerHTML = CONGEST.map((c) => `<span><i style="background: var(${c.css})"></i>${c.level}</span>`).join("");
+for (let k = 0; k <= 12; k++) {
+  const t = document.createElement("span");
+  t.textContent = k ? `+${k}` : "지금";
+  fcstTicks.append(t);
+}
+
+// 장소의 k단계 값(0 = 지금, k = k시간 뒤 예측). 없으면 null. 인구는 범위의 가운데 값을 쓴다.
+function citySnap(area, k) {
+  const v = k ? area.live?.forecast[k - 1] : area.live?.now;
+  if (!v || v.min === null || v.max === null) return null;
+  return { ...v, mid: (v.min + v.max) / 2 };
+}
+const clock = (t) => String(t ?? "").slice(11, 16); // "2026-10-12 13:40" → "13:40"
+const range = (v) => (v.min === v.max ? `${fmt(v.min)}명` : `${fmt(v.min)}–${fmt(v.max)}명`);
+const congestRgb = (level) => CONGEST.find((c) => c.level === level)?.rgb ?? CONGEST_NONE_RGB;
+
+function showForecast() {
+  const k = Number(fcst.value);
+  [...fcstTicks.children].forEach((t, j) => t.classList.toggle("current", j === k));
+  const live = cityAreas.filter((a) => a.live);
+  const time = clock(live.map((a) => citySnap(a, k)).find(Boolean)?.time);
+  fcstLabel.textContent = (k ? `${k}시간 뒤` : "지금") + (time ? ` · ${time}` : "");
+  fcst.setAttribute("aria-valuetext", fcstLabel.textContent);
+  const counts = CONGEST.map((c) => live.filter((a) => citySnap(a, k)?.level === c.level).length);
+  citySummary.innerHTML = live.length
+    ? CONGEST.map((c, j) => `<span><i style="background: var(${c.css})"></i>${c.level} ${fmt(counts[j])}곳</span>`).join(" · ")
+    : "";
+  refreshMap();
+}
+fcst.addEventListener("input", showForecast);
+showForecast();
+
+async function loadCity() {
+  try {
+    const res = await fetch("api/citydata");
+    if (!res.ok || !res.headers.get("content-type")?.includes("json")) {
+      throw new Error(res.status === 404 ? "npm start로 연 서버에서만 보입니다" : `HTTP ${res.status}`);
+    }
+    const data = await res.json();
+    const byCode = new Map(data.areas.map((a) => [a.code, a]));
+    for (const area of cityAreas) area.live = byCode.get(area.code) ?? null;
+    cityStamp++;
+    const unknown = data.areas.filter((a) => !cityAreas.some((c) => c.code === a.code));
+    if (unknown.length) console.warn("영역 zip에 없어 지도에서 뺀 장소", unknown.map((a) => `${a.code} ${a.name}`));
+    const mids = cityAreas.flatMap((a) => Array.from({ length: 13 }, (_, k) => citySnap(a, k)?.mid ?? 0));
+    cityMax = Math.max(...mids) > 0 ? niceMax(Math.max(...mids)) : 0;
+    const got = cityAreas.filter((a) => a.live).length;
+    const at = new Date(data.updatedAt).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" });
+    cityStatus.textContent = `실시간 도시데이터 ${fmt(got)}/${fmt(cityAreas.length)}곳 · ${at} 받음`
+      + (data.sample ? " (sample 키: 광화문·덕수궁 1곳만)" : "")
+      + (data.errors.length ? ` · ${fmt(data.errors.length)}곳 못 받음` : "");
+    document.getElementById("city-scale").textContent = cityMax
+      ? `영역 높이 = 추정 인구(범위의 가운데, 최대 눈금 ${fmt(cityMax)}명)`
+      : "영역 높이 = 추정 인구(범위의 가운데)";
+  } catch (err) {
+    for (const area of cityAreas) area.live = null;
+    cityStamp++;
+    cityStatus.textContent = `실시간 도시데이터를 불러오지 못했습니다: ${err.message}`;
+  }
+  showForecast();
+}
+async function pollCity() {
+  clearTimeout(cityTimer);
+  const gen = ++cityGen;
+  if (!showCity || document.hidden || !cityAreas.length) return;
+  await loadCity();
+  if (gen === cityGen && showCity && !document.hidden) cityTimer = setTimeout(pollCity, CITY_MS);
+}
+document.addEventListener("visibilitychange", pollCity);
+cityToggle.addEventListener("click", () => {
+  showCity = !showCity;
+  cityToggle.textContent = showCity ? "숨기기" : "보이기";
+  cityToggle.setAttribute("aria-label", showCity ? "실시간 도시데이터 숨기기" : "실시간 도시데이터 보이기");
+  cityToggle.setAttribute("aria-pressed", String(showCity));
+  document.getElementById("city-panel").hidden = !showCity;
+  pollCity();
+  refreshMap();
+});
+
+function cityTooltip(area) {
+  const k = Number(fcst.value);
+  const v = citySnap(area, k);
+  const head = `<b>${esc(area.name)}</b> <small>${esc(area.category)}</small><br>`;
+  if (!v) return head + (area.live ? `${k}시간 뒤 예측이 없습니다` : "실시간 값을 받지 못했습니다");
+  return head + `${k ? `${k}시간 뒤 예측` : "지금"} 혼잡도 <b>${esc(v.level)}</b> · 인구 <b>${range(v)}</b><br>`
+    + (k ? "" : `<small>${esc(area.live.message)}</small><br>`)
+    + `<small>${esc(v.time)} ${k ? "예측" : "기준"}</small>`;
+}
+
 function trainTooltip(t) {
   const tags = [t.directAt === "1" ? "급행" : t.directAt === "7" ? "특급" : "", t.lstcarAt === "1" ? "막차" : ""].filter(Boolean);
   return `<b>${esc(t.subwayNm)} ${esc(t.trainNo)} 열차</b>${tags.length ? ` <small>${esc(tags.join("·"))}</small>` : ""}<br>`
@@ -802,7 +953,7 @@ Promise.all([fetchCsv(SUBWAY_CSV), fetchCsv(STATION_MASTER_CSV)])
     const paths = linePaths(master);
     trainGeo = lineGeometry(master);
 
-    const layers = (i) => [
+    const layers = (i, k = Number(fcst.value), cityOn = showCity && cityAreas.some((a) => a.live)) => [
       new deck.PathLayer({
         id: "lines", data: paths, getPath: (d) => d.path, getColor: LINE_COLOR,
         getWidth: 2, widthUnits: "pixels", widthMinPixels: 1,
@@ -813,12 +964,24 @@ Promise.all([fetchCsv(SUBWAY_CSV), fetchCsv(STATION_MASTER_CSV)])
         getElevation: (d) => d.daily[i],
         elevationScale: MAX_ELEVATION_M / yMax,
         // 역을 고르면 그 기둥만 --answer로 또렷하게, 나머지는 흐리게 한다.
-        getFillColor: (d) => (d.entry === selected?.entry ? ANSWER_RGB : [...rampColor(d.daily[i] / yMax), selected ? DIM_ALPHA : 255]),
+        getFillColor: (d) => (d.entry === selected?.entry ? ANSWER_RGB
+          : [...rampColor(d.daily[i] / yMax), selected ? DIM_ALPHA : cityOn ? CITY_ON_ALPHA : 255]),
         autoHighlight: true, highlightColor: [232, 230, 223, 255],
-        updateTriggers: { getElevation: i, getFillColor: [i, selected?.entry.id] },
+        updateTriggers: { getElevation: i, getFillColor: [i, selected?.entry.id, cityOn] },
         // 색은 전환하지 않는다. getFillColor에 transitions를 걸면 짧은 기둥의 윗면이 비어 보인다(deck.gl 9.0.38).
         transitions: reduceMotion ? {} : { getElevation: { duration: STEP_MS * 0.85, easing: (t) => t * (2 - t) } },
         onClick: ({ object }) => object && selectEntry(object.entry),
+      }),
+      // 반투명 영역은 기둥 뒤에 그려야 영역 안쪽 기둥이 깊이 검사에 가려 사라지지 않는다.
+      new deck.PolygonLayer({
+        id: "citydata", data: showCity ? cityPolys : [], pickable: true, extruded: true,
+        getPolygon: (d) => d.polygon,
+        getElevation: (d) => citySnap(d.area, k)?.mid ?? 0,
+        elevationScale: cityMax ? CITY_MAX_ELEVATION_M / cityMax : 0,
+        getFillColor: (d) => { const v = citySnap(d.area, k); return v ? [...congestRgb(v.level), CITY_ALPHA] : [...CONGEST_NONE_RGB, 90]; },
+        autoHighlight: true, highlightColor: [232, 230, 223, 120],
+        updateTriggers: { getElevation: [k, cityStamp], getFillColor: [k, cityStamp] },
+        transitions: reduceMotion ? {} : { getElevation: { duration: 400, easing: (t) => t * (2 - t) } },
       }),
       // 열차 점은 기둥에 가려지지 않게 깊이 검사 없이 맨 위에 그린다. 급행·특급은 조금 크게.
       new deck.ScatterplotLayer({
@@ -839,7 +1002,7 @@ Promise.all([fetchCsv(SUBWAY_CSV), fetchCsv(STATION_MASTER_CSV)])
       layers: layers(Number(slider.value)),
       getCursor: ({ isHovering, isDragging }) => (isDragging ? "grabbing" : isHovering ? "pointer" : "grab"),
       getTooltip: ({ object, layer }) => object && {
-        html: layer.id === "trains" ? trainTooltip(object) : `<b>${object.name}</b> <small>${object.lines}</small><br>${hourLabel(HOURS[Number(slider.value)])} 하루 평균 <b>${fmt(object.daily[Number(slider.value)])}명</b><br><small>눌러서 이 역 고르기</small>`,
+        html: layer.id === "trains" ? trainTooltip(object) : layer.id === "citydata" ? cityTooltip(object.area) : `<b>${object.name}</b> <small>${object.lines}</small><br>${hourLabel(HOURS[Number(slider.value)])} 하루 평균 <b>${fmt(object.daily[Number(slider.value)])}명</b><br><small>눌러서 이 역 고르기</small>`,
         style: { background: "#171b23", color: "#e8e6df", border: "1px solid #343a48", borderRadius: "8px", fontSize: "13px", padding: "8px 10px" },
       },
     });
@@ -847,6 +1010,16 @@ Promise.all([fetchCsv(SUBWAY_CSV), fetchCsv(STATION_MASTER_CSV)])
     renderTop5();
     showResults(); // 불러오는 동안 입력한 검색어가 있으면 결과를 보여 준다
     pollTrains();
+    fetchAreas()
+      .then((areas) => {
+        cityAreas = areas.map((a) => ({ ...a, live: null }));
+        cityPolys = cityAreas.flatMap((area) => area.polygons.map((polygon) => ({ area, polygon })));
+        pollCity();
+      })
+      .catch((err) => {
+        console.error(err);
+        cityStatus.textContent = `도시데이터 영역을 불러오지 못했습니다: ${err.message}`;
+      });
   })
   .catch((err) => {
     console.error(err);

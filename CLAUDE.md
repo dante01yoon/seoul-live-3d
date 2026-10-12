@@ -20,6 +20,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - `subway-lines.mjs`: 노선(운행 계통)별 역 순서(`SUBWAY_LINES`). 역은 역사마스터의 `"역사_ID 역사명"`으로 적고, 순서는 직접 적었다(역사_ID 순서와 다르다). 고치면 `tests/subway-lines.test.mjs`의 거리·꺾임 검사를 통과해야 한다.
 - `realtime-trains.mjs`: 실시간 열차 위치 API 호출·20초 캐시·키 가리기(`createTrainsSource`). `server.mjs`와 `api/trains.js`(Vercel 함수, 키는 Vercel 환경 변수 `SEOUL_REALTIME_KEY`)가 함께 쓴다. Vercel 설정은 `vercel.json`(빌드 없음)과 `.vercelignore`(점 파일 제외).
 - `server.mjs`: 의존성 없는 Node 서버. 정적 파일(점으로 시작하는 경로는 404)과 `/api/trains`(실시간 열차 위치 프록시, 20초 캐시). 실시간 지하철 인증키는 `.env`의 `SEOUL_REALTIME_KEY`로 서버만 읽는다. 키를 브라우저 코드·응답·오류 문구에 넣지 않는다. 없으면 `sample` 키(노선마다 5대).
+- `citydata-areas.mjs`: 서울시 주요 121장소 영역 zip(shapefile)을 읽을 때 풀어서 `{ code, category, name, polygons }`로 바꾼다(zip·.shp·.dbf 파서, 의존성 없음, `DecompressionStream` 사용). 브라우저와 Node가 함께 쓴다.
+- `realtime-citydata.mjs`: 실시간 도시데이터(`citydata_ppltn`, 인구·혼잡도·12시간 예측) 121곳 호출·5분 캐시·키 가리기(`createCitydataSource`). 장소 코드는 영역 zip에서 읽는다. 키는 일반 인증키 `SEOUL_OPENAPI_KEY`(`.env`/Vercel 환경 변수). `sample` 키는 어느 장소를 물어도 광화문·덕수궁만 주므로 1곳만 묻는다. `server.mjs`와 `api/citydata.js`가 함께 쓰고, Vercel은 `vercel.json`의 `includeFiles`로 zip을 함수에 올린다.
+- `subway.html`의 도시데이터 레이어: 영역을 추정 인구(범위의 가운데)만큼 솟게(`PolygonLayer`), 색은 혼잡도 4단계(`--congest-1`…`--congest-4`), 예측 슬라이더 0 = 지금, 1–12 = 시간 뒤. 레이어가 보이면 승하차 기둥은 흐리게(`CITY_ON_ALPHA`) 그린다.
 - `train-positions.mjs`: API 열차 행 → 지도 좌표(`placeTrain`). API `statnId`는 역사_ID와 체계가 달라 역 이름(`stopKey`, 괄호 부역명 제거)으로 맞추고, 방향은 종착역 쪽(지선 너머면 갈라지는 역 쪽)으로 정한다. API 역 이름이 다르면 `API_NAME_ALIASES`에 넣는다.
 - 시간대 순서는 04시부터 다음 날 03시까지(`HOURS = (i + 4) % 24`). 승하차가 0명인 시간대(02·03시)는 운행하지 않는 때로 보고 "가장 한가한 때" 후보에서 뺀다.
 
@@ -28,6 +31,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - 필드: `SBWY_ROUT_LN_NM`(호선), `STTN`(역), `HR_<시>_GET_ON_NOPE`/`HR_<시>_GET_OFF_NOPE`(그 시간대 승차/하차). 값은 한 달 합계다.
 - 앱 기본 데이터는 `data/raw/`의 9월 CSV(CP949)이고, `subway-csv.mjs`가 읽을 때 API 행 모양으로 바꾼다. 역 좌표는 역사마스터 CSV에서 찾는다(이름이 다른 11곳은 `STATION_NAME_ALIASES`).
 - `tests/data.test.mjs`는 9월 CSV 내용(621행, 역명 528개, 가산디지털단지 값 등)에, `tests/stats.test.mjs`는 7월 JSON 내용에 직접 의존한다. 데이터를 바꾸면 테스트도 확인할 것.
+- `data/raw/citydata/`: 서울시 주요 121장소 목록(xlsx)과 영역(zip, WGS84, .dbf는 UTF-8). `tests/citydata.test.mjs`가 121곳·분류별 개수·북서울꿈의숲 2조각에 의존한다.
 - 출처 표시(서울특별시, 공공누리 제1유형)를 유지한다.
 
 ## 규칙

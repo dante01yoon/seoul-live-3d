@@ -41,6 +41,12 @@
 - API는 "어느 역에 진입·도착·출발"만 줍니다. 지도 위치는 `subway-lines.mjs`의 역 순서와 역사마스터 좌표로 `train-positions.mjs`가 정합니다.
 - 출처: 서울특별시 (https://data.seoul.go.kr/dataList/OA-12601/A/1/datasetView.do), 공공누리 제1유형(출처 표시).
 
+### 실시간 도시데이터 (`subway.html`)
+- API: 서울 열린데이터광장 「서울시 실시간 인구데이터」(`citydata_ppltn`), `http://openapi.seoul.go.kr:8088/<인증키>/json/citydata_ppltn/1/5/<장소코드>`. 장소마다 지금 혼잡도·추정 인구 범위와 12시간 예측을 줍니다.
+- 인증키는 **일반 인증키**입니다(실시간 지하철 인증키와 다름). `.env`에 `SEOUL_OPENAPI_KEY=발급받은키`로 넣습니다. 없으면 `sample` 키를 쓰는데, sample 키는 어느 장소를 물어도 광화문·덕수궁 1곳만 돌려줍니다.
+- 서버는 121곳을 5분에 한 번(동시 8개씩)만 묻습니다. 장소 영역은 `data/raw/citydata/서울시 주요 121장소 영역.zip`을 읽을 때 풀어서 씁니다(`citydata-areas.mjs`).
+- 출처: 서울특별시 (https://data.seoul.go.kr/dataList/OA-21778/S/1/datasetView.do), 공공누리 제1유형(출처 표시).
+
 맨 위 3D 장면은 역마다 승차·하차 기둥을 세우고, 시간 슬라이더로 시간대를 바꾸면 높이가 바뀝니다. 역 좌표는 데이터에 없어 `index.html`에 근사값으로 넣었습니다. 3D 렌더링에는 [Three.js](https://threejs.org/)(MIT, CDN 로드)를 씁니다.
 
 ## 권한 설정
