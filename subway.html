@@ -1696,7 +1696,7 @@ function stationAt(entry, i) {
   const ratio = entry.peak ? entry.daily[i] / entry.peak : 0;
   return { name: entry.name, ratio, running: netRunning[i] && entry.daily[i] >= 1 };
 }
-// 장소마다 가장 가까운 역(500m 안)과 근처 따릉이 대여소. 장소·역·대여소는 바뀌지 않으므로 한 번만 잰다.
+// 장소마다 가장 가까운 역(NEARBY_RADIUS_M 안)과 근처 따릉이 대여소. 장소·역·대여소는 바뀌지 않으므로 한 번만 잰다.
 const areaNear = new Map();
 function nearOf(area) {
   let n = areaNear.get(area);

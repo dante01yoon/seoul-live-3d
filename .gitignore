@@ -9,3 +9,5 @@ data/bike/bike-rentals-*.csv
 reports/*.json
 reports/.*.tmp
 .claude/trace.log
+# 검증 훅(check.py)이 통과한 파일 해시를 남기는 곳
+.claude/check-state.json

@@ -83,6 +83,16 @@
             "command": "python3 \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/trace.py"
           }
         ]
+      },
+      {
+        "matcher": "Edit|Write|MultiEdit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/check.py",
+            "timeout": 180
+          }
+        ]
       }
     ],
     "PostToolUseFailure": [
@@ -101,6 +111,15 @@
           {
             "type": "command",
             "command": "python3 \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/trace.py"
+          }
+        ]
+      },
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/check.py --stop",
+            "timeout": 300
           }
         ]
       }

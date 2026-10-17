@@ -63,8 +63,8 @@ test("itemsNearArea: 영역에서 반경 안의 항목만 가까운 순으로", 
 });
 
 test("기본 반경과 개수", () => {
-  assert.equal(NEARBY_RADIUS_M, 500);
-  assert.equal(NEARBY_LIMIT, 3);
+  assert.equal(NEARBY_RADIUS_M, 300);
+  assert.equal(NEARBY_LIMIT, 5);
 });
 
 test("실제 데이터: 역 이름을 딴 장소는 그 역 좌표를 품는다", async () => {
