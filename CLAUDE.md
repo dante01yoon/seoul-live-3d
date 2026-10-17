@@ -53,6 +53,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - 사용자에게 하는 대답은 한국어로 쓴다.
 - 노선을 색으로 구분할 때는 서울 지하철 공식 노선색을 쓴다(예: 1호선 `#0052A4`). 다른 노선 색은 짐작하지 말고 공식 자료로 확인한 뒤 CSS 변수로 정의한다. 승차·하차 색(`--series-on`, `--series-off`)과는 따로 둔다.
 - 화면에 보이는 숫자는 천 단위 쉼표를 찍는다(예: `187,960`). `fmt`가 쓰는 `toLocaleString()`은 브라우저 로캘에 따라 결과가 달라지므로 `toLocaleString("ko-KR")`처럼 로캘을 지정한다.
+- 화면에 보이는 시각은 `timeZone: "Asia/Seoul"`을 지정한다(`"ko-KR"`은 표기만 바꾸고 시간대는 컴퓨터 것을 따른다). 예: `kstClock`.
+- 버그는 이 순서로 잡는다: ① 원인을 코드에서 찾아 설명 → ② 고치기 전에 `scripts/repro-*.mjs` 재현 스크립트로 지금 코드가 틀리는 걸 보인다(복사본이 아니라 실제 코드를 읽어 실행하고, 틀리면 종료 코드 1. 시간대 문제는 `TZ`를 바꿔 자식 프로세스로) → ③ 고친 뒤 같은 스크립트와 `npm test`로 확인. 예: `scripts/repro-received-time.mjs`.
 
 ## 주의
 - `.env`는 읽지 않는다(`.claude/settings.json`에서 거부). `git push`는 확인을 받는다.

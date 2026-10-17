@@ -1421,7 +1421,7 @@ async function loadTrains() {
       }
       return placed ? [{ ...t, ...placed }] : [];
     });
-    const at = new Date(data.updatedAt).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+    const at = new Date(data.updatedAt).toLocaleTimeString("ko-KR", { timeZone: "Asia/Seoul", hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
     trainsStatus.textContent = `실시간 열차 ${fmt(trains.length)}대 · ${at} 기준${data.sample ? " (sample 키: 노선마다 5대)" : ""}`;
     const missing = data.trains.length - trains.length;
     if (missing) trainsStatus.textContent += ` · 역 위치를 몰라 ${fmt(missing)}대 뺌`;
@@ -1514,7 +1514,7 @@ async function loadCity() {
       .map((v) => (v && v.min !== null && v.max !== null ? (v.min + v.max) / 2 : 0)));
     cityMax = Math.max(...mids) > 0 ? niceMax(Math.max(...mids)) : 0;
     const got = cityAreas.filter((a) => a.live).length;
-    const at = new Date(data.updatedAt).toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" });
+    const at = new Date(data.updatedAt).toLocaleTimeString("ko-KR", { timeZone: "Asia/Seoul", hour: "2-digit", minute: "2-digit", hour12: false });
     cityStatus.textContent = `실시간 도시데이터 ${fmt(got)}/${fmt(cityAreas.length)}곳 · ${at} 받음`
       + (data.sample ? " (sample 키: 광화문·덕수궁 1곳만)" : "")
       + (data.errors.length ? ` · ${fmt(data.errors.length)}곳 못 받음` : "");
