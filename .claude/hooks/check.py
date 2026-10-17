@@ -11,6 +11,10 @@
 실패하면 무엇이 깨졌는지 stderr에 쓰고 exit 2 — 클로드가 그 내용을 받아 고친다.
 Stop에서는 같은 세션에서 연달아 MAX_STOP_BLOCKS번까지만 막는다(끝없이 안 끝나는 것 방지).
 
+GitHub Actions(`.github/workflows/check.yml`)에서는 `--ci <기준 커밋>`으로 불린다.
+기준 커밋과 HEAD 사이에 바뀐 파일을 같은 검사로 돌리되, 첫 실패에서 멈추지 않고
+실패를 모두 모아 로그·주석(::error)·작업 요약에 남기고 exit 1. 기준을 빼면 추적 파일 전체.
+
 - 문법: .mjs·.js → node --check, .html → 안의 <script type="module">을 node --check,
         .json → json 파싱, .py → py_compile
 - 타입: .ts·.mjs·.js → mcp-server의 tsc(루트 stats.mjs·subway-csv.mjs도 거기서 import됨)
@@ -29,8 +33,12 @@ MAX_STOP_BLOCKS = 3  # Stop 훅이 연달아 막는 최대 횟수
 TYPE_EXTS = (".ts", ".mjs", ".js")
 TEST_EXTS = (".mjs", ".js", ".ts", ".json", ".csv")
 
-e = json.load(sys.stdin)
-root = os.environ.get("CLAUDE_PROJECT_DIR") or e.get("cwd", "")
+CI = "--ci" in sys.argv
+e = {} if CI else json.load(sys.stdin)
+if CI:  # 저장소 루트 = .claude/hooks/의 두 단계 위
+    root = os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+else:
+    root = os.environ.get("CLAUDE_PROJECT_DIR") or e.get("cwd", "")
 state_path = os.path.join(root, ".claude", "check-state.json")
 
 
@@ -90,22 +98,27 @@ def check_tests():
     return run(["node", "--test", "--test-reporter=dot"])
 
 
-def check_files(paths):
-    """파일들을 검사해 실패하면 (검사 이름, 출력), 모두 통과하면 None을 돌려준다."""
+def check_files(paths, stop_first=True):
+    """파일들을 검사해 실패하면 (검사 이름, 출력), 모두 통과하면 None을 돌려준다.
+
+    stop_first=False면 끝까지 돌려 실패 목록 [(검사 이름, 출력), ...]을 돌려준다."""
     exts = {ext_of(p) for p in paths}
     checks = [(f"{os.path.relpath(p, root)} 문법", lambda p=p: check_syntax(p)) for p in paths]
     if exts & set(TYPE_EXTS):
         checks.append(("타입", check_types))
     if exts & set(TEST_EXTS):
         checks.append(("테스트", check_tests))
+    failures = []
     for name, check in checks:
         try:
             ok, out = check()
         except subprocess.TimeoutExpired:
             ok, out = False, "시간 초과(120초)"
         if not ok:
-            return name, out
-    return None
+            if stop_first:
+                return name, out
+            failures.append((name, out))
+    return None if stop_first else failures
 
 
 def load_state():
@@ -187,7 +200,48 @@ def on_stop():
     sys.exit(2)
 
 
-if "--stop" in sys.argv:
+def ci_files(base):
+    """CI 검사 대상: 기준 커밋과 HEAD 사이에 바뀐 파일(기준이 없으면 추적 파일 전체)."""
+    cmd = ["git", "diff", "--name-only", f"{base}...HEAD"] if base else ["git", "ls-files"]
+    p = subprocess.run(cmd, cwd=root, capture_output=True, text=True)
+    if p.returncode != 0:
+        print(f"::error title=검증::git 실패: {p.stderr.strip()}")
+        sys.exit(1)
+    paths = (os.path.join(root, n) for n in sorted(set(p.stdout.splitlines())) if n)
+    return [p for p in paths if not skipped(p)]  # 지운 파일은 isfile에서 빠진다
+
+
+def on_ci():
+    args = sys.argv[sys.argv.index("--ci") + 1:]
+    paths = ci_files(args[0] if args else "")
+    rels = [os.path.relpath(p, root) for p in paths]
+    print(f"검사할 파일 {len(rels)}개: {', '.join(rels) or '없음'}")
+    if not os.path.exists(os.path.join(root, "mcp-server", "node_modules", ".bin", "tsc")):
+        print("::warning title=타입 검사 건너뜀::mcp-server 의존성이 없다(npm ci 필요)")
+    failures = check_files(paths, stop_first=False) if paths else []
+    lines = ["## 검증 하네스(check.py)", ""]
+    if not failures:
+        lines.append(f"✅ 통과 — 파일 {len(rels)}개 문법·타입·테스트")
+    for name, out in failures:
+        out = out.replace(root + os.sep, "")  # 러너의 절대 경로는 뺀다
+        print(f"::group::{name} 검사 실패")
+        print(out)
+        print("::endgroup::")
+        # 주석에는 오류를 가리키는 첫 줄(없으면 첫 줄)만 싣는다
+        first = next((l.strip() for l in out.splitlines() if re.search(r"rror|✖", l)),
+                     (out.splitlines() or [""])[0])
+        print(f"::error title={name} 검사 실패::{first}")
+        lines += [f"### ❌ {name} 검사 실패", "", "```", out, "```", ""]
+    summary = os.environ.get("GITHUB_STEP_SUMMARY")
+    if summary:
+        with open(summary, "a", encoding="utf-8") as f:
+            f.write("\n".join(lines) + "\n")
+    sys.exit(1 if failures else 0)
+
+
+if CI:
+    on_ci()
+elif "--stop" in sys.argv:
     on_stop()
 else:
     on_edit()
