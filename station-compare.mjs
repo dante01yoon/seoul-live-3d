@@ -20,6 +20,12 @@ export function compareDaily(a, b) {
   };
 }
 
+// 하루 평균 승하차(entries[].riders)로 매긴 전체 순위(답 카드). 동률이면 같은 순위(나보다 많은 역 수 + 1).
+export const riderRank = (entries, entry) => ({
+  rank: entries.filter((e) => e.riders > entry.riders).length + 1,
+  of: entries.length,
+});
+
 // ---- 주소로 공유: ?compare=강남,홍대입구 ----
 // 쉼표는 그대로 두고 역 이름만 인코딩한다(주소창에서 읽기 쉽게). 다른 검색 파라미터는 건드리지 않는다.
 export const COMPARE_PARAM = "compare";

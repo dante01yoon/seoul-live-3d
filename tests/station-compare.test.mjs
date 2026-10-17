@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { compareDaily, compareSearch, findStationByName, readCompareParam } from "../station-compare.mjs";
+import { compareDaily, compareSearch, findStationByName, readCompareParam, riderRank } from "../station-compare.mjs";
 
 test("합계·피크·더 많은 칸 수·차이가 가장 큰 칸", () => {
   const r = compareDaily([10, 50, 30, 0], [20, 10, 30, 0]);
@@ -43,4 +43,13 @@ test("주소의 역 이름 찾기: 같은 이름, 부역명 뺀 이름만", () =
   assert.equal(findStationByName(entries, "잠실(송파구청)"), entries[2]);
   assert.equal(findStationByName(entries, "ㄱㄴ"), null);
   assert.equal(findStationByName(entries, "강"), null);
+});
+
+test("하루 평균 승하차 순위: 많은 역이 1위, 동률은 같은 순위", () => {
+  const entries = [{ riders: 50 }, { riders: 300 }, { riders: 120 }, { riders: 120 }, { riders: 0 }];
+  assert.deepEqual(riderRank(entries, entries[1]), { rank: 1, of: 5 });
+  assert.deepEqual(riderRank(entries, entries[2]), { rank: 2, of: 5 });
+  assert.deepEqual(riderRank(entries, entries[3]), { rank: 2, of: 5 });
+  assert.deepEqual(riderRank(entries, entries[0]), { rank: 4, of: 5 });
+  assert.deepEqual(riderRank(entries, entries[4]), { rank: 5, of: 5 });
 });
