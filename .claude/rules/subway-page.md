@@ -6,11 +6,13 @@ paths:
   - "nearby-places.mjs"
   - "station-search.mjs"
   - "station-compare.mjs"
+  - "transfer-lines.mjs"
   - "tests/alerts.test.mjs"
   - "tests/recommend.test.mjs"
   - "tests/nearby-places.test.mjs"
   - "tests/station-search.test.mjs"
   - "tests/station-compare*.test.mjs"
+  - "tests/transfer-lines.test.mjs"
 ---
 
 # subway.html 기능(슬라이더·알림·추천·역 찾기·비교)
@@ -21,3 +23,4 @@ paths:
 - `nearby-places.mjs`: 역 좌표에서 도시데이터 영역 경계까지 거리(m, 안이면 0)를 재서 `NEARBY_RADIUS_M`(300m) 안의 장소를 가까운 순으로 `NEARBY_LIMIT`(5)곳까지 고른다(`nearbyAreas`). 답 카드의 「가까운 장소 · 지금 혼잡도」(`renderNearby`)가 쓰고, 누르면 `selectPlace`로 붐빔 기록을 연다.
 - `station-search.mjs`: 역 찾기(`searchStations`). 이름 일부나 초성으로 찾는다(글자마다 맞춰서 "ㄱㄴ"·"강ㄴ" → 강남, 된소리 초성은 따로 본다). 순서는 이름과 같음 → 앞부분 → 가운데 → 부역명이고, 같으면 하루 승하차(`riders`)가 많은 역 먼저, 그다음 이름순.
 - `station-compare.mjs`: 「두 역 비교」(`renderCompare`) 계산(`compareDaily`: 하루 합계·각 역 피크·더 많은 시간대 수·차이가 가장 큰 시간대). 고른 역과 비교할 역을 둘 다 전체 노선 합계 하루 평균으로 꺾은선 2개로 그리고(범례에 「전체 노선 합계」), 눈금은 3D 공통 `yMax`가 아니라 두 역의 최댓값(`niceMax`)이다. 색은 `--compare-a`·`--compare-b`. 주소로 공유: `?compare=강남,홍대입구`로 열면 두 역을 골라 바로 비교하고(`readCompareParam`, 이름이 같거나 부역명 뺀 이름이 같은 역만 `findStationByName`), 두 역을 고르면 주소도 `replaceState`로 바꾼다(`compareSearch`, 다른 파라미터는 유지). 「링크 복사」 버튼(`#cmp-share`).
+- `transfer-lines.mjs`: 환승역 답 카드의 노선 칩·노선별 승하차. CSV 호선명을 승객이 아는 노선으로 묶는다(`passengerLine`·`groupByLine`, 경부·경인선 → 1호선, 경원선은 역으로 나눔). 결정과 단계는 `SPEC.md`.

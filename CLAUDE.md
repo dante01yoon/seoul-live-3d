@@ -17,8 +17,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## 파일 지도
 - 화면: `index.html`(3D 기둥), `subway.html`(지도·실시간·붐빔·따릉이·추천·로그인), `bike.html`(따릉이 하루 재생), `admin.html`(관리자), `stations.html`, `reports/index.html`(리포트 보기)
 - 서버: `server.mjs`(정적 파일 + `/api/*`), `api/*.js`(같은 API의 Vercel 함수), `vercel.json`·`.vercelignore`
-- 공용 모듈: `stats.mjs`(`HOURS`·`count`·`total`), `subway-csv.mjs`(CP949 CSV), `subway-lines.mjs`, `train-positions.mjs`, `realtime-*.mjs`, `citydata-*.mjs`, `db-status.mjs`, `alerts.mjs`, `recommend.mjs`, `nearby-places.mjs`, `station-search.mjs`, `station-compare.mjs`, `bike-trips.mjs`, `daily-report.mjs`
-- `scripts/`(점검·수집·빌드·리포트), `supabase/`(마이그레이션), `mcp-server/`(MCP 서버), `data/`(원본 데이터), `tests/`
+- 공용 모듈: `stats.mjs`(`HOURS`·`count`·`total`), `subway-csv.mjs`(CP949 CSV), `subway-lines.mjs`, `train-positions.mjs`, `realtime-*.mjs`, `citydata-*.mjs`, `db-status.mjs`, `alerts.mjs`, `recommend.mjs`, `nearby-places.mjs`, `station-search.mjs`, `station-compare.mjs`, `bike-trips.mjs`, `daily-report.mjs`, `transfer-lines.mjs`(환승역 노선 묶기, `SPEC.md`)
+- `tools/otel-view.mjs`(Claude Code 사용량 대시보드, OTLP http/json → http://127.0.0.1:18972. 계정 정보는 허용 목록 `KEEP_ATTRS`로 버리고 저장·표시·출력하지 않는다, `tests/otel-view.test.mjs`), `bench/kit-ab.mjs`(하네스 키트 있음/없음 비교)
+- `scripts/`(점검·수집·빌드·리포트, `repro-*.mjs` 재현 스크립트), `supabase/`(마이그레이션), `mcp-server/`(MCP 서버), `data/`(원본 데이터), `tests/`
 
 ## 공통 규칙
 - 사용자에게 하는 대답은 한국어로 쓴다.
@@ -28,6 +29,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - 화면에 보이는 숫자는 천 단위 쉼표를 찍는다(예: `187,960`). `fmt`가 쓰는 `toLocaleString()`은 브라우저 로캘에 따라 결과가 달라지므로 `toLocaleString("ko-KR")`처럼 로캘을 지정한다.
 - 출처 표시(서울특별시, 공공누리 제1유형)를 유지한다.
 - 테스트가 데이터 파일 내용에 직접 의존한다. 데이터를 바꾸면 테스트도 확인할 것(`tests/CLAUDE.md`).
+- 화면에 보이는 시각은 `timeZone: "Asia/Seoul"`을 지정한다(`"ko-KR"`은 표기만 바꾸고 시간대는 컴퓨터 것을 따른다). 예: `kstClock`.
+- 버그는 이 순서로 잡는다: ① 원인을 코드에서 찾아 설명 → ② 고치기 전에 `scripts/repro-*.mjs` 재현 스크립트로 지금 코드가 틀리는 걸 보인다(복사본이 아니라 실제 코드를 읽어 실행하고, 틀리면 종료 코드 1. 시간대 문제는 `TZ`를 바꿔 자식 프로세스로) → ③ 고친 뒤 같은 스크립트와 `npm test`로 확인. 예: `scripts/repro-received-time.mjs`.
 
 ## 주의
 - `.env`는 읽지 않는다(`.claude/settings.json`에서 거부). `git push`는 확인을 받는다.
