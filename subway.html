@@ -519,6 +519,7 @@
 // 로그인(이메일 6자리 코드)과 즐겨찾기는 Supabase에 바로 붙는다. 주소와 publishable 키는 /api/config로 받고, 남의 행은 RLS가 막는다.
 import { HOURS, total, usageMonth, quietestInWindow, peakRatio, WINDOW_PRESETS, DEFAULT_WINDOW_ID } from "./stats.mjs";
 import { SUBWAY_CSV, STATION_MASTER_CSV, fetchCsv, toSubwayRows, mergeStations, stationLocator } from "./subway-csv.mjs";
+import { groupByLine } from "./transfer-lines.mjs";
 import { SUBWAY_LINES, DUPLICATE_STATIONS, parseStop } from "./subway-lines.mjs";
 import { lineGeometry, placeTrain } from "./train-positions.mjs";
 import { fetchAreas } from "./citydata-areas.mjs";
@@ -555,7 +556,7 @@ winStart.value = HOURS.indexOf(defaultHours[0]);
 winEnd.value = HOURS.indexOf(defaultHours.at(-1));
 
 // ---- 상태 ----
-let entries = [];       // 역 검색 항목(환승역은 합친 행 하나). { id, name, lines, merged, byLine, station, daily, riders }
+let entries = [];       // 역 검색 항목(환승역은 합친 행 하나). { id, name, lines, merged, byLine, station, daily, riders } — lines는 CSV 호선명, byLine은 묶은 노선(transfer-lines.mjs)별 행
 const entryByName = new Map(); // 역명 → entries 항목(즐겨찾기 역은 역명으로 가리킨다)
 let selected = null;    // { entry, line } — line이 null이면 노선 합산
 let windowId = DEFAULT_WINDOW_ID;
@@ -749,11 +750,11 @@ function selectEntry(entry) {
   render();
 }
 
-// 환승역이면 노선 합산과 노선별 칩을 보여 준다.
+// 환승역이면 노선 합산과 노선별 칩을 보여 준다. 칩은 승객이 아는 노선(byLine, 묶은 노선) 기준이라 묶은 노선이 하나면(지축) 숨긴다.
 function renderLines() {
   linesEl.replaceChildren();
-  if (!selected || selected.entry.lines.length < 2) return;
-  for (const line of [null, ...selected.entry.lines]) {
+  if (!selected || selected.entry.byLine.size < 2) return;
+  for (const line of [null, ...selected.entry.byLine.keys()]) {
     const b = document.createElement("button");
     b.type = "button";
     b.className = "chip";
@@ -1989,7 +1990,7 @@ Promise.all([fetchCsv(SUBWAY_CSV), fetchCsv(STATION_MASTER_CSV)])
     for (const merged of mergeStations(rows)) {
       const entry = {
         id: entries.length, name: merged.STTN, lines: merged.LINES, merged,
-        byLine: new Map(rows.filter((r) => r.STTN === merged.STTN && merged.LINES.includes(r.SBWY_ROUT_LN_NM)).map((r) => [r.SBWY_ROUT_LN_NM, r])),
+        byLine: new Map(groupByLine(rows.filter((r) => r.STTN === merged.STTN && merged.LINES.includes(r.SBWY_ROUT_LN_NM))).map((r) => [r.SBWY_ROUT_LN_NM, r])),
         station: null, daily: HOURS.map((h) => total(merged, h) / days),
       };
       entry.riders = entry.daily.reduce((a, v) => a + v, 0); // 검색에서 점수가 같으면 많은 역 먼저
