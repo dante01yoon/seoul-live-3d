@@ -8,3 +8,6 @@ data/bike/bike-rentals-*.csv
 # 아침 리포트(npm run report)가 만든 파일. 보기 화면(reports/index.html)만 넣는다.
 reports/*.json
 reports/.*.tmp
+.claude/trace.log
+# 검증 훅(check.py)이 통과한 파일 해시를 남기는 곳
+.claude/check-state.json

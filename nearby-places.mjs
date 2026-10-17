@@ -2,8 +2,8 @@
 // 점과 영역은 [경도, 위도], 영역은 citydata-areas.mjs의 polygons 모양([[바깥 고리, 구멍 고리…], …])이다.
 // 몇 km 안쪽만 다루므로 기준점 둘레를 평면(등장방형)으로 펴서 m 단위로 잰다.
 
-export const NEARBY_RADIUS_M = 500; // 역 좌표에서 영역 경계까지 이 안이면 "가까운 장소"
-export const NEARBY_LIMIT = 3;      // 답 카드에 보여 줄 최대 개수
+export const NEARBY_RADIUS_M = 300; // 역 좌표에서 영역 경계까지 이 안이면 "가까운 장소"
+export const NEARBY_LIMIT = 5;      // 답 카드에 보여 줄 최대 개수
 
 const M_PER_DEG = (6_371_008.8 * Math.PI) / 180;
 
