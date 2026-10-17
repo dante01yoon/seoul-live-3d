@@ -38,13 +38,21 @@ function score(name, k) {
   return looseIndexOf(norm(name), k) >= 0 ? 3 : -1; // 부역명으로도 찾는다(예: DDP)
 }
 
+// 끝의 "역"을 뗀 검색어로도 맞춰 보고 더 잘 맞는 쪽을 쓴다("강남역" → 강남, "서울역"은 그대로 서울역).
+function bestScore(name, k) {
+  const s = score(name, k);
+  if (k.length < 2 || !k.endsWith("역")) return s;
+  const t = score(name, k.slice(0, -1));
+  return s < 0 ? t : t < 0 ? s : Math.min(s, t);
+}
+
 // entries: { name, riders?, ... }[] → 잘 맞는 순으로 limit개.
 // 점수가 같으면 승하차(riders)가 많은 역을 먼저 둔다("ㄱㄴ"은 가능·강남 둘 다 이름과 같다). 그다음은 이름순.
 export function searchStations(entries, text, limit = 8) {
   const k = norm(text);
   if (!k) return [];
   return entries
-    .map((e) => [score(e.name, k), e])
+    .map((e) => [bestScore(e.name, k), e])
     .filter(([s]) => s >= 0)
     .sort((a, b) => a[0] - b[0] || (b[1].riders ?? 0) - (a[1].riders ?? 0) || a[1].name.localeCompare(b[1].name, "ko"))
     .slice(0, limit)

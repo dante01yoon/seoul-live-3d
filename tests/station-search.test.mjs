@@ -54,3 +54,12 @@ test("글자로 찾는 기존 동작은 그대로다", () => {
   assert.deepEqual(names("  "), []);
   assert.deepEqual(names("없는역이름"), []);
 });
+
+test("이름 뒤에 '역'을 붙여 쳐도 찾는다", () => {
+  assert.equal(names("강남역")[0], "강남");
+  assert.equal(names("가산디지털단지역")[0], "가산디지털단지");
+  assert.equal(names("ㄱㄴ역")[0], "강남");
+  assert.equal(names("서울역")[0], "서울역", "이름에 '역'이 든 역은 그대로 맨 위");
+  assert.equal(names("역삼")[0], "역삼", "앞의 '역'은 떼지 않는다");
+  assert.ok(names("역").includes("역삼"), "'역'만 치면 '역'이 든 역을 찾는다");
+});
