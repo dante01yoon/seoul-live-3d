@@ -110,6 +110,8 @@
   .answer .station { font-size: 18px; font-weight: 700; }
   .answer .line { font-size: 13px; color: var(--text-secondary); margin-left: 6px; font-weight: 400; }
   .answer .window { font-size: 13px; color: var(--text-secondary); }
+  .answer .rank { font-size: 13px; color: var(--text-secondary); }
+  .answer .rank b { color: var(--text-primary); font-variant-numeric: tabular-nums; }
   .answer .hour { font-size: 44px; line-height: 1.05; font-weight: 700; color: var(--answer); }
   .answer .detail { font-size: 15px; line-height: 1.5; }
   .answer .detail b { font-variant-numeric: tabular-nums; }
@@ -392,6 +394,7 @@
       <section class="panel answer" id="answer" aria-live="polite">
         <div class="answer-head"><div><span class="station">역을 골라 주세요</span><span class="line"></span></div>
           <button type="button" class="star" id="fav-station" hidden aria-pressed="false" aria-label="이 역 즐겨찾기">☆ 내 역</button></div>
+        <div class="rank"></div>
         <div class="window">낮 · 10–15시대 중에서</div>
         <div class="hour">—</div>
         <div class="detail">역을 고르면 이 시간 창에서 가장 한가한 시간대를 알려 드립니다.</div>
@@ -529,7 +532,7 @@ import { DOCK_RADIUS_M, RECOMMEND_LIMIT, crowdAtHour, recommend } from "./recomm
 import { PLACE_ALERT_LEVELS, STATION_ALERT_RATIOS, activeAlerts, kstHour, newAlerts, throttleAlerts } from "./alerts.mjs";
 import { DB_DOWN_MESSAGE, dbErrorText } from "./db-status.mjs";
 import { norm, searchStations } from "./station-search.mjs";
-import { compareDaily, compareSearch, findStationByName, placePeakLabels, readCompareParam } from "./station-compare.mjs";
+import { compareDaily, compareSearch, findStationByName, placePeakLabels, readCompareParam, riderRanks } from "./station-compare.mjs";
 
 const pad = (h) => String(h).padStart(2, "0");
 const hourLabel = (h) => `${pad(h)}시대`;
@@ -556,7 +559,7 @@ winStart.value = HOURS.indexOf(defaultHours[0]);
 winEnd.value = HOURS.indexOf(defaultHours.at(-1));
 
 // ---- 상태 ----
-let entries = [];       // 역 검색 항목(환승역은 합친 행 하나). { id, name, lines, merged, byLine, station, daily, riders } — lines는 CSV 호선명, byLine은 묶은 노선(transfer-lines.mjs)별 행
+let entries = [];       // 역 검색 항목(환승역은 합친 행 하나). { id, name, lines, merged, byLine, station, daily, riders, rank } — lines는 CSV 호선명, byLine은 묶은 노선(transfer-lines.mjs)별 행
 const entryByName = new Map(); // 역명 → entries 항목(즐겨찾기 역은 역명으로 가리킨다)
 let selected = null;    // { entry, line } — line이 null이면 노선 합산
 let windowId = DEFAULT_WINDOW_ID;
@@ -783,6 +786,14 @@ function renderAnswer(row, win, quiet) {
   if (!row) return;
   el(".station").textContent = selected.entry.name;
   el(".line").textContent = selected.line ?? (selected.entry.lines.length > 1 ? `${row.SBWY_ROUT_LN_NM} 합산` : row.SBWY_ROUT_LN_NM);
+  // 순위는 노선 칩과 상관없이 역 전체(노선 합산) 하루 평균으로 매긴다(entry.rank, 불러올 때 계산).
+  // 답 카드가 aria-live라서 시간 창만 바뀔 때 같은 문장을 다시 읽지 않도록, 역·노선이 바뀔 때만 쓴다.
+  const rankEl = el(".rank");
+  const rankKey = `${selected.entry.id}|${selected.line ?? ""}`;
+  if (rankEl.dataset.key !== rankKey) {
+    rankEl.dataset.key = rankKey;
+    rankEl.innerHTML = `하루 평균 승하차 <b>${fmt(selected.entry.riders)}</b>명 · 전체 ${fmt(entries.length)}역 중 <b>${fmt(selected.entry.rank)}</b>위${selected.line ? " (역 전체 기준)" : ""}`;
+  }
   const ratioBar = el(".ratio i");
   if (!quiet.length) {
     el(".hour").textContent = "기록 없음";
@@ -2008,6 +2019,7 @@ Promise.all([fetchCsv(SUBWAY_CSV), fetchCsv(STATION_MASTER_CSV)])
       entries.push(entry);
       entryByName.set(entry.name, entry);
     }
+    riderRanks(entries).forEach((rank, k) => (entries[k].rank = rank)); // 답 카드의 전체 순위
     console.log(`3D에 세운 역 ${stations.length}곳`);
 
     yMax = niceMax(Math.max(...stations.flatMap((s) => s.daily)));
