@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { compareDaily, compareSearch, findStationByName, readCompareParam, riderRank } from "../station-compare.mjs";
+import { compareDaily, compareSearch, findStationByName, readCompareParam, riderRanks } from "../station-compare.mjs";
 
 test("합계·피크·더 많은 칸 수·차이가 가장 큰 칸", () => {
   const r = compareDaily([10, 50, 30, 0], [20, 10, 30, 0]);
@@ -45,11 +45,13 @@ test("주소의 역 이름 찾기: 같은 이름, 부역명 뺀 이름만", () =
   assert.equal(findStationByName(entries, "강"), null);
 });
 
-test("하루 평균 승하차 순위: 많은 역이 1위, 동률은 같은 순위", () => {
+test("하루 평균 승하차 순위: 많은 역이 1위, 동률은 같은 순위, entries 순서대로", () => {
   const entries = [{ riders: 50 }, { riders: 300 }, { riders: 120 }, { riders: 120 }, { riders: 0 }];
-  assert.deepEqual(riderRank(entries, entries[1]), { rank: 1, of: 5 });
-  assert.deepEqual(riderRank(entries, entries[2]), { rank: 2, of: 5 });
-  assert.deepEqual(riderRank(entries, entries[3]), { rank: 2, of: 5 });
-  assert.deepEqual(riderRank(entries, entries[0]), { rank: 4, of: 5 });
-  assert.deepEqual(riderRank(entries, entries[4]), { rank: 5, of: 5 });
+  assert.deepEqual(riderRanks(entries), [4, 1, 2, 2, 5]);
+  assert.deepEqual(riderRanks([]), []);
+});
+
+test("순위는 화면에 보이는 반올림 값으로 매긴다", () => {
+  // 둘 다 "1,234명"으로 보이므로 같은 순위, 1,235명(1234.5)은 그보다 위
+  assert.deepEqual(riderRanks([{ riders: 1234.2 }, { riders: 1234.4 }, { riders: 1234.5 }]), [2, 2, 1]);
 });
