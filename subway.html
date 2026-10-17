@@ -1581,6 +1581,10 @@ function renderNearby() {
       + `<small>${where}${v ? ` · ${clock(v.time)}` : ""}</small></button>`;
     const btn = li.querySelector("button");
     btn.title = v ? `${area.name} 지금 인구 ${range(v)} · 누르면 최근 24시간 기록` : `${area.name} 실시간 값을 받지 못했습니다`;
+    const away = distanceM ? `역에서 ${where}` : "역이 영역 안";
+    btn.setAttribute("aria-label", v
+      ? `${area.name} ${v.level}, ${away}, 지금 인구 ${range(v)}(${clock(v.time)} 기준). 누르면 최근 24시간 붐빔 기록 보기`
+      : `${area.name} 실시간 값 없음, ${away}. 누르면 최근 24시간 붐빔 기록 보기`);
     btn.addEventListener("click", () => selectPlace(area));
     return li;
   }));
