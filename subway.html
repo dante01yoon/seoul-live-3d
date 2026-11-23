@@ -395,6 +395,7 @@
         <div class="answer-head"><div><span class="station">역을 골라 주세요</span><span class="line"></span></div>
           <button type="button" class="star" id="fav-station" hidden aria-pressed="false" aria-label="이 역 즐겨찾기">☆ 내 역</button></div>
         <div class="rank"></div>
+        <div class="rank month-total"></div>
         <div class="window">낮 · 10–15시대 중에서</div>
         <div class="hour">—</div>
         <div class="detail">역을 고르면 이 시간 창에서 가장 한가한 시간대를 알려 드립니다.</div>
@@ -520,7 +521,7 @@
 // 역 검색 → 답 카드·하루 띠·2D 차트, 그리고 3D 지도(deck.gl)와 시간 재생. 지도 기둥을 눌러도 역이 골라진다.
 // 실시간 열차 위치(/api/trains)와 실시간 도시데이터(/api/citydata)는 server.mjs가 인증키를 붙여 받아 온다. 브라우저에는 키가 없다.
 // 로그인(이메일 6자리 코드)과 즐겨찾기는 Supabase에 바로 붙는다. 주소와 publishable 키는 /api/config로 받고, 남의 행은 RLS가 막는다.
-import { HOURS, total, usageMonth, quietestInWindow, peakRatio, WINDOW_PRESETS, DEFAULT_WINDOW_ID } from "./stats.mjs";
+import { HOURS, total, monthTotal, usageMonth, quietestInWindow, peakRatio, WINDOW_PRESETS, DEFAULT_WINDOW_ID } from "./stats.mjs";
 import { SUBWAY_CSV, STATION_MASTER_CSV, fetchCsv, toSubwayRows, mergeStations, stationLocator } from "./subway-csv.mjs";
 import { groupByLine } from "./transfer-lines.mjs";
 import { SUBWAY_LINES, DUPLICATE_STATIONS, parseStop } from "./subway-lines.mjs";
@@ -559,11 +560,12 @@ winStart.value = HOURS.indexOf(defaultHours[0]);
 winEnd.value = HOURS.indexOf(defaultHours.at(-1));
 
 // ---- 상태 ----
-let entries = [];       // 역 검색 항목(환승역은 합친 행 하나). { id, name, lines, merged, byLine, station, daily, riders, rank } — lines는 CSV 호선명, byLine은 묶은 노선(transfer-lines.mjs)별 행
+let entries = [];       // 역 검색 항목(환승역은 합친 행 하나). { id, name, lines, merged, byLine, station, monthTotal, daily, riders, rank } — lines는 CSV 호선명, byLine은 묶은 노선(transfer-lines.mjs)별 행
 const entryByName = new Map(); // 역명 → entries 항목(즐겨찾기 역은 역명으로 가리킨다)
 let selected = null;    // { entry, line } — line이 null이면 노선 합산
 let windowId = DEFAULT_WINDOW_ID;
 let days = 30;          // 기준 달의 일수
+let monthLabel = "2026년 9월"; // 기준 달 표시 문구(답 카드의 한 달 합계 줄)
 let yMax = 0;           // 2D 차트와 3D 기둥이 함께 쓰는 눈금
 let refreshMap = () => {};
 let mapReady = false;   // 3D 지도와 역 목록이 준비됐는지. 그 전에는 붐빔 요약·따릉이·추천 카드를 그리지 않는다
@@ -793,6 +795,7 @@ function renderAnswer(row, win, quiet) {
   if (rankEl.dataset.key !== rankKey) {
     rankEl.dataset.key = rankKey;
     rankEl.innerHTML = `하루 평균 승하차 <b>${fmt(selected.entry.riders)}</b>명 · 전체 ${fmt(entries.length)}역 중 <b>${fmt(selected.entry.rank)}</b>위${selected.line ? " (역 전체 기준)" : ""}`;
+    el(".month-total").innerHTML = `${monthLabel} 한 달 승하차 <b>${fmt(selected.entry.monthTotal)}</b>명${selected.line ? " (역 전체 기준)" : ""}`;
   }
   const ratioBar = el(".ratio i");
   if (!quiet.length) {
@@ -1998,6 +2001,7 @@ Promise.all([fetchCsv(SUBWAY_CSV), fetchCsv(STATION_MASTER_CSV)])
     const month = usageMonth(rows[0]);
     if (month) document.querySelectorAll(".data-month").forEach((el) => (el.textContent = month.label));
     days = month?.days ?? 30;
+    if (month) monthLabel = month.label;
 
     // 환승역은 합쳐서 역마다 기둥 하나. daily[i] = HOURS[i] 시간대 하루 평균 승차+하차
     const coordOf = stationLocator(master);
@@ -2006,7 +2010,7 @@ Promise.all([fetchCsv(SUBWAY_CSV), fetchCsv(STATION_MASTER_CSV)])
       const entry = {
         id: entries.length, name: merged.STTN, lines: merged.LINES, merged,
         byLine: new Map(groupByLine(rows.filter((r) => r.STTN === merged.STTN && merged.LINES.includes(r.SBWY_ROUT_LN_NM))).map((r) => [r.SBWY_ROUT_LN_NM, r])),
-        station: null, daily: HOURS.map((h) => total(merged, h) / days),
+        station: null, monthTotal: monthTotal(merged), daily: HOURS.map((h) => total(merged, h) / days),
       };
       entry.riders = entry.daily.reduce((a, v) => a + v, 0); // 검색에서 점수가 같으면 많은 역 먼저
       const at = coordOf(merged);

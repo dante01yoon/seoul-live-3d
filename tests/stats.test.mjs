@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import {
-  DEFAULT_WINDOW_ID, HOURS, WINDOW_PRESETS, busiestHours, peakRatio, quietestInWindow, usageMonth,
+  DEFAULT_WINDOW_ID, HOURS, WINDOW_PRESETS, busiestHours, count, monthTotal, peakRatio, quietestInWindow, usageMonth,
 } from "../stats.mjs";
 
 const rows = JSON.parse(readFileSync("data/subway-hourly-202607.json", "utf8")).CardSubwayTime.row;
@@ -81,4 +81,13 @@ test("데이터 기준 달 형식이 맞지 않으면 null이다", () => {
   for (const USE_MM of [undefined, null, "", "2026-07", "202613", "202600", "2026070"]) {
     assert.equal(usageMonth({ USE_MM }), null, String(USE_MM));
   }
+});
+
+test("한 달 승하차 합계는 모든 시간대의 승차+하차를 더한다(답 카드)", () => {
+  const row = fakeRow({ 4: 10, 8: 300, 23: 5 });
+  row.HR_8_GET_OFF_NOPE = 200;
+  assert.equal(monthTotal(row), 515);
+  assert.equal(monthTotal(fakeRow({})), 0);
+  const sum = HOURS.reduce((s, h) => s + count(seoul, h, "ON") + count(seoul, h, "OFF"), 0);
+  assert.equal(monthTotal(seoul), sum);
 });
