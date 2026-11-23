@@ -1,0 +1,50 @@
+#!/usr/bin/env bash
+# 고치는 라인(소프트웨어 팩토리): 이슈 하나마다 작업대(worktree)를 만들고 /factory-fix를 돌린 뒤,
+# 결과를 검사해 통과하면 push하고 PR을 연다. 머지는 사람이 한다.
+# 사용법: scripts/factory <이슈 번호>
+#         FACTORY_BASE=main (PR의 기준 브랜치)
+# 이미 PR이 있는 이슈(리뷰 댓글을 반영할 때)는 같은 브랜치를 다시 받아 이어서 고친다.
+set -euo pipefail
+
+n=${1:?이슈 번호}
+root=$(git rev-parse --show-toplevel)
+cd "$root"
+base_branch=${FACTORY_BASE:-main}
+branch="fix/issue-$n"
+dir=".claude/worktrees/issue-$n"
+
+git fetch -q origin
+if [ ! -d "$dir" ]; then
+  if git ls-remote --exit-code -q origin "refs/heads/$branch" >/dev/null; then
+    git worktree add -q "$dir" -B "$branch" "origin/$branch"
+  else
+    git worktree add -q "$dir" -b "$branch" "origin/$base_branch"
+  fi
+fi
+mkdir -p "$dir/.factory"
+start=$(git -C "$dir" rev-parse HEAD)
+
+# 에이전트가 쓸 수 있는 명령만 허용한다. push·PR은 없다(아래에서 스크립트가 한다).
+allowed=(Read Grep Glob Edit Write Task Skill
+  "Bash(npm test:*)" "Bash(node:*)" "Bash(gh issue:*)" "Bash(gh label:*)" "Bash(gh pr view:*)"
+  "Bash(git add:*)" "Bash(git commit:*)" "Bash(git diff:*)" "Bash(git status:*)" "Bash(git log:*)"
+  "Bash(git show:*)" "Bash(git stash:*)" "Bash(ls:*)" "Bash(cat:*)" "Bash(grep:*)" "Bash(sed -n:*)"
+  "Bash(head:*)" "Bash(tail:*)" "Bash(wc:*)" "Bash(find:*)" "Bash(mkdir:*)")
+(cd "$dir" && FACTORY_BASE="$base_branch" claude -p "/factory-fix $n" \
+  --permission-mode acceptEdits --allowedTools "${allowed[@]}" --output-format json > .factory/run.json)
+
+cd "$dir"
+fail() { echo "STOP: $*  (작업대 $dir)" >&2; exit 1; }
+[ "$(git rev-parse HEAD)" != "$start" ] || fail "새 커밋이 없습니다."
+[ -z "$(git status --porcelain)" ] || fail "커밋하지 않은 변경이 남았습니다."
+knowledge=$(git diff --name-only "$start" | grep -E '(^|/)CLAUDE\.md$|^\.claude/|^scripts/curator$' || true)
+[ -z "$knowledge" ] || fail "지식 파일이 바뀌었습니다: $knowledge"
+npm test >/dev/null 2>&1 || fail "npm test 실패"
+[ -s .factory/pr.md ] || fail "PR 본문(.factory/pr.md)이 없습니다."
+
+git push -q -u origin "$branch"
+if gh pr view "$branch" >/dev/null 2>&1; then
+  gh pr comment "$branch" --body-file .factory/pr.md
+else
+  gh pr create --base "$base_branch" --head "$branch" --title "$(gh issue view "$n" --json title -q .title)" --body-file .factory/pr.md
+fi

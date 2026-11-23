@@ -53,6 +53,15 @@
             "command": "python3 \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/trace.py"
           }
         ]
+      },
+      {
+        "matcher": "Edit|Write|MultiEdit|NotebookEdit|Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "python3 \"$CLAUDE_PROJECT_DIR\"/.claude/hooks/knowledge-lock.py"
+          }
+        ]
       }
     ],
     "PermissionRequest": [

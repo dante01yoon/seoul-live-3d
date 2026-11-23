@@ -32,6 +32,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 - 화면에 보이는 시각은 `timeZone: "Asia/Seoul"`을 지정한다(`"ko-KR"`은 표기만 바꾸고 시간대는 컴퓨터 것을 따른다). 예: `kstClock`.
 - 버그는 이 순서로 잡는다: ① 원인을 코드에서 찾아 설명 → ② 고치기 전에 `scripts/repro-*.mjs` 재현 스크립트로 지금 코드가 틀리는 걸 보인다(복사본이 아니라 실제 코드를 읽어 실행하고, 틀리면 종료 코드 1. 시간대 문제는 `TZ`를 바꿔 자식 프로세스로) → ③ 고친 뒤 같은 스크립트와 `npm test`로 확인. 예: `scripts/repro-received-time.mjs`.
 
+## 팩토리 (이슈 → PR, 지식 신고)
+- 이슈 분류 `/factory-triage`, 고치기 `scripts/factory <이슈 번호>`(작업대마다 `/factory-fix` → 검사 → PR). 머지는 사람이 한다. 기준 브랜치는 `FACTORY_BASE`(기본 main).
+- 지식(CLAUDE.md, `.claude/rules`·`skills`·`agents`·`hooks`, `.claude/settings.json`)은 읽기만 한다. 고치려 하면 `knowledge-lock.py` 훅이 막는다. 빠졌거나 틀린 지식은 `/knowledge-flag`로 신고하고, 고치는 일은 밤마다 도는 `scripts/curator`(knowledge-curator)와 그 PR을 머지하는 사람이 한다.
+
 ## 주의
 - `.env`는 읽지 않는다(`.claude/settings.json`에서 거부). `git push`는 확인을 받는다.
 - API 키(`SEOUL_REALTIME_KEY`, `SEOUL_OPENAPI_KEY`, `SUPABASE_SERVICE_ROLE_KEY`)는 서버만 읽는다. 브라우저 코드·응답·오류 문구에 넣지 않는다.

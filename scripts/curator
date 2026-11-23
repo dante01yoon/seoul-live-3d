@@ -1,0 +1,65 @@
+#!/usr/bin/env bash
+# 지식 정리 라인(날리지 팩토리의 느린 고리): 신고·리뷰 댓글·실행 기록을 모아 knowledge-curator를 돌리고 지식 PR을 연다.
+# 매일 밤 cron·launchd·GitHub Actions 일정(.github/workflows/curator.yml)으로 돌린다. 머지는 사람이 한다.
+# 사용법: scripts/curator [YYYY-MM-DD 이후 댓글만, 기본 어제]
+#         FACTORY_BASE=main (지식 PR의 기준 브랜치, /factory-fix와 같음)
+set -euo pipefail
+
+root=$(git rev-parse --show-toplevel)
+cd "$root"
+since=${1:-$(date -v-1d +%F 2>/dev/null || date -d yesterday +%F)}
+base_branch=${FACTORY_BASE:-main}
+stamp=$(date +%Y%m%d-%H%M%S)
+branch="knowledge/$stamp"
+dir=".claude/worktrees/curator-$stamp"
+
+git fetch -q origin
+git worktree add -q "$dir" -b "$branch" "origin/$base_branch"
+mkdir -p "$dir/.curator"
+
+# 1) 신고
+gh issue list --label knowledge:flag --state open --json number,title,body,comments \
+  -q '.[] | "## #\(.number) \(.title)\n\n\(.body)\n\n" + ([.comments[] | "- 댓글: \(.body)"] | join("\n"))' \
+  > "$dir/.curator/flags.md"
+
+# 2) 사람의 말: 최근 PR의 댓글·리뷰·코드 줄 댓글
+repo=$(gh repo view --json nameWithOwner -q .nameWithOwner)
+{
+  echo "# 최근 PR 리뷰·댓글 ($since 이후)"
+  for n in $(gh pr list --state all --search "updated:>=$since" --json number -q '.[].number'); do
+    echo; echo "## PR #$n"
+    gh pr view "$n" --comments
+    gh api "repos/$repo/pulls/$n/comments" -q '.[] | "- \(.path):\(.line // .original_line) \(.user.login): \(.body)"'
+  done
+} > "$dir/.curator/reviews.md"
+
+# 3) 실행 기록: 관찰 훅(trace.py)이 남긴 요청과 지식 잠금에 막힌 편집
+{
+  echo "# 실행 기록 (.claude/trace.log에서 요청·지식 잠금 줄)"
+  cat .claude/trace.log .claude/worktrees/issue-*/.claude/trace.log 2>/dev/null | grep -E '요청|지식 잠금' | tail -200 || true
+} > "$dir/.curator/traces.md"
+
+# 4) 큐레이터 실행. 지식 잠금 훅은 FACTORY_ROLE=curator일 때만 지식 편집을 통과시킨다.
+(cd "$dir" && FACTORY_ROLE=curator claude -p --agent knowledge-curator --permission-mode acceptEdits \
+  "오늘 밤 지식 정리를 해 줘. 기록 시작일 $since. .curator/의 파일부터 읽어.")
+
+# 5) 경로 검사: 지식 말고 다른 파일을 건드렸으면 PR을 열지 않는다.
+cd "$dir"
+changed=$(git status --porcelain --untracked-files=all | cut -c4-)
+bad=$(printf '%s\n' "$changed" | grep -vE '^((.+/)?CLAUDE\.md|\.claude/rules/[^/]+\.md|\.claude/skills/factory-[a-z-]+/SKILL\.md)$' | grep -v '^$' || true)
+if [ -n "$bad" ]; then
+  echo "BLOCKED: 큐레이터가 지식 밖의 파일을 바꿨습니다. 작업대 $dir 를 확인하세요." >&2
+  printf '  %s\n' $bad >&2
+  exit 1
+fi
+if [ -z "$changed" ] || grep -qx 'NO_CHANGES' .curator/pr.md 2>/dev/null; then
+  echo "반영할 신고가 없습니다."
+  cd "$root" && git worktree remove --force "$dir" && git branch -D -q "$branch"
+  exit 0
+fi
+
+# 6) 지식 PR (커밋·push·PR은 스크립트가 한다)
+git add -A -- $changed
+git commit -q -m "지식: 신고 반영 ($(date +%F))"
+git push -q -u origin "$branch"
+gh pr create --base "$base_branch" --head "$branch" --title "지식 정리 $(date +%F)" --body-file .curator/pr.md
