@@ -6,6 +6,12 @@ export const HOURS = [...Array(24)].map((_, i) => (i + 4) % 24);
 // kind는 "ON"(승차) 또는 "OFF"(하차)
 export const count = (row, h, kind) => row[`HR_${h}_GET_${kind}_NOPE`];
 export const total = (row, h) => count(row, h, "ON") + count(row, h, "OFF");
+// 기준 달 한 달 동안의 승차+하차 합계(모든 시간대)
+export const monthTotal = (row) => HOURS.reduce((s, h) => s + total(row, h), 0);
+// 사람 수 표기: 1만 이상은 「약 444.3만 명」(만 명 단위, 소수 한 자리), 그보다 작으면 「9,999명」
+export const manPeople = (n) => n >= 10000
+  ? `약 ${(n / 10000).toLocaleString("ko-KR", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}만 명`
+  : `${Math.round(n).toLocaleString("ko-KR")}명`;
 
 // value가 가장 앞서는(better) 시간대를 모두 HOURS 순서로 돌려준다. 동률이면 여러 개다.
 function bestHours(hours, value, better) {
