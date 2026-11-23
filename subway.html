@@ -521,7 +521,7 @@
 // 역 검색 → 답 카드·하루 띠·2D 차트, 그리고 3D 지도(deck.gl)와 시간 재생. 지도 기둥을 눌러도 역이 골라진다.
 // 실시간 열차 위치(/api/trains)와 실시간 도시데이터(/api/citydata)는 server.mjs가 인증키를 붙여 받아 온다. 브라우저에는 키가 없다.
 // 로그인(이메일 6자리 코드)과 즐겨찾기는 Supabase에 바로 붙는다. 주소와 publishable 키는 /api/config로 받고, 남의 행은 RLS가 막는다.
-import { HOURS, total, monthTotal, usageMonth, quietestInWindow, peakRatio, WINDOW_PRESETS, DEFAULT_WINDOW_ID } from "./stats.mjs";
+import { HOURS, total, monthTotal, manPeople, usageMonth, quietestInWindow, peakRatio, WINDOW_PRESETS, DEFAULT_WINDOW_ID } from "./stats.mjs";
 import { SUBWAY_CSV, STATION_MASTER_CSV, fetchCsv, toSubwayRows, mergeStations, stationLocator } from "./subway-csv.mjs";
 import { groupByLine } from "./transfer-lines.mjs";
 import { SUBWAY_LINES, DUPLICATE_STATIONS, parseStop } from "./subway-lines.mjs";
@@ -795,7 +795,7 @@ function renderAnswer(row, win, quiet) {
   if (rankEl.dataset.key !== rankKey) {
     rankEl.dataset.key = rankKey;
     rankEl.innerHTML = `하루 평균 승하차 <b>${fmt(selected.entry.riders)}</b>명 · 전체 ${fmt(entries.length)}역 중 <b>${fmt(selected.entry.rank)}</b>위${selected.line ? " (역 전체 기준)" : ""}`;
-    el(".month-total").innerHTML = `${monthLabel} 한 달 승하차 <b>${fmt(selected.entry.monthTotal)}</b>명${selected.line ? " (역 전체 기준)" : ""}`;
+    el(".month-total").innerHTML = `${monthLabel} 한 달 승하차 <b>${manPeople(selected.entry.monthTotal)}</b>${selected.line ? " (역 전체 기준)" : ""}`;
   }
   const ratioBar = el(".ratio i");
   if (!quiet.length) {

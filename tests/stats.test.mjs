@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import {
-  DEFAULT_WINDOW_ID, HOURS, WINDOW_PRESETS, busiestHours, count, monthTotal, peakRatio, quietestInWindow, usageMonth,
+  DEFAULT_WINDOW_ID, HOURS, WINDOW_PRESETS, busiestHours, count, manPeople, monthTotal, peakRatio, quietestInWindow, usageMonth,
 } from "../stats.mjs";
 
 const rows = JSON.parse(readFileSync("data/subway-hourly-202607.json", "utf8")).CardSubwayTime.row;
@@ -90,4 +90,12 @@ test("한 달 승하차 합계는 모든 시간대의 승차+하차를 더한다
   assert.equal(monthTotal(fakeRow({})), 0);
   const sum = HOURS.reduce((s, h) => s + count(seoul, h, "ON") + count(seoul, h, "OFF"), 0);
   assert.equal(monthTotal(seoul), sum);
+});
+
+test("1만 명 이상은 「약 N.N만 명」, 그보다 작으면 쉼표로 쓴다(한 달 합계 줄)", () => {
+  assert.equal(manPeople(4442719), "약 444.3만 명");
+  assert.equal(manPeople(10000), "약 1.0만 명");
+  assert.equal(manPeople(123456789), "약 12,345.7만 명");
+  assert.equal(manPeople(9999), "9,999명");
+  assert.equal(manPeople(0), "0명");
 });
