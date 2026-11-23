@@ -40,10 +40,11 @@ repo=$(gh repo view --json nameWithOwner -q .nameWithOwner)
 } > "$dir/.curator/traces.md"
 
 # 4) 큐레이터 실행. 지식 잠금 훅은 FACTORY_ROLE=curator일 때만 지식 편집을 통과시킨다.
-(cd "$dir" && FACTORY_ROLE=curator claude -p --agent knowledge-curator --permission-mode acceptEdits \
-  "오늘 밤 지식 정리를 해 줘. 기록 시작일 $since. .curator/의 파일부터 읽어." \
-  --allowedTools 'Edit(.claude/rules/**)' 'Edit(.claude/skills/factory-*/**)')
-# .claude/ 아래는 클로드 코드가 민감한 경로로 보고 acceptEdits에서도 묻는다 → 고쳐도 되는 두 곳만 허용한다.
+# 큐레이터에게는 셸이 없다(agents/knowledge-curator.md의 tools: Read·Grep·Glob·Edit·Write). 클로드 코드는 .claude/ 아래를
+# 민감한 경로로 보고 acceptEdits·allow 규칙으로도 헤드리스 편집을 막으므로, 권한 확인은 건너뛰고(bypassPermissions)
+# 대신 끝난 뒤 이 스크립트가 바뀐 경로를 검사한다. 지식 잠금 훅은 그대로 돈다.
+(cd "$dir" && FACTORY_ROLE=curator claude -p --agent knowledge-curator --permission-mode bypassPermissions \
+  "오늘 밤 지식 정리를 해 줘. 기록 시작일 $since. .curator/의 파일부터 읽어.")
 
 # 5) 경로 검사: 지식 말고 다른 파일을 건드렸으면 PR을 열지 않는다.
 cd "$dir"
