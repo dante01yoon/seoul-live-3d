@@ -1,4 +1,12 @@
 // 두 역 비교(subway.html의 「두 역 비교」 그래프). a·b는 HOURS 순서의 시간대별 값(하루 평균 승차+하차)이다.
+import { manPeople } from "./stats.mjs";
+
+const esc = (v) => String(v ?? "").replace(/[&<>"']/g, (c) => `&#${c.charCodeAt(0)};`);
+
+// 비교 요약의 한 달 합계 줄(HTML). stations: [{ name, monthTotal }] (고른 역, 비교할 역 순서).
+// 한 달 합계는 만 명 단위(manPeople)로 쓴다. monthLabel은 기준 달 문구(예: 「2026년 9월」).
+export const compareMonthLine = (monthLabel, stations) =>
+  `${esc(monthLabel)} 한 달 합계 ${stations.map((s) => `${esc(s.name)} <b>${manPeople(s.monthTotal)}</b>`).join(" · ")}`;
 
 // 가장 큰 값의 칸 번호. 동률이면 앞 칸이다. 전부 0이면 -1이다.
 const argMax = (xs) => xs.reduce((best, v, i) => (v > 0 && (best < 0 || v > xs[best]) ? i : best), -1);
