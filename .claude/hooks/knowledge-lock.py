@@ -25,7 +25,8 @@ def blocked(e):
     ti = e.get("tool_input") or {}
     if e.get("tool_name") == "Bash":
         cmd = ti.get("command", "")
-        return cmd[:80] if SHELL_PATH.search(cmd) and SHELL_WRITE.search(cmd) else None
+        w = re.sub(r"\d?>&\d|\d?>\s*/dev/null", "", cmd)  # 2>&1·>/dev/null은 쓰기가 아니다
+        return cmd[:80] if SHELL_PATH.search(cmd) and SHELL_WRITE.search(w) else None
     path = ti.get("file_path") or ti.get("notebook_path") or ""
     root = os.path.realpath(e.get("cwd") or ".")
     full = os.path.realpath(path) if path else ""
@@ -48,6 +49,7 @@ def self_test():
     assert case("Bash", command="echo x >> .claude/rules/bike.md")
     assert case("Bash", command="cat .claude/rules/bike.md") is None
     assert case("Bash", command="npm test > /tmp/out") is None
+    assert case("Bash", command="gh issue view 15 2>&1 | head; ls .claude/rules/ 2>/dev/null") is None
     print("self-test ok")
 
 
