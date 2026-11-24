@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import {
-  DEFAULT_WINDOW_ID, HOURS, WINDOW_PRESETS, busiestHours, count, manPeople, monthTotal, peakRatio, quietestInWindow, usageMonth,
+  DEFAULT_WINDOW_ID, HOURS, WINDOW_PRESETS, busiestHours, count, manPeople, monthTotal, monthTotalItem, peakRatio, quietestInWindow, usageMonth,
 } from "../stats.mjs";
 
 const rows = JSON.parse(readFileSync("data/subway-hourly-202607.json", "utf8")).CardSubwayTime.row;
@@ -90,6 +90,13 @@ test("한 달 승하차 합계는 모든 시간대의 승차+하차를 더한다
   assert.equal(monthTotal(fakeRow({})), 0);
   const sum = HOURS.reduce((s, h) => s + count(seoul, h, "ON") + count(seoul, h, "OFF"), 0);
   assert.equal(monthTotal(seoul), sum);
+});
+
+test("역별 하루 요약의 한 달 합계 줄: 기준 달 이름과 만 명 단위 합계(#16)", () => {
+  assert.deepEqual(monthTotalItem(seoul), { label: "7월 한 달 승하차", value: manPeople(monthTotal(seoul)) });
+  assert.deepEqual(monthTotalItem({ ...fakeRow({ 8: 9876 }), USE_MM: "202609" }), { label: "9월 한 달 승하차", value: "9,876명" });
+  // 기준 달을 모르면 달 이름 없이 쓴다.
+  assert.deepEqual(monthTotalItem(fakeRow({ 8: 44430000 })), { label: "한 달 승하차", value: "약 4,443.0만 명" });
 });
 
 test("1만 명 이상은 「약 N.N만 명」, 그보다 작으면 쉼표로 쓴다(한 달 합계 줄)", () => {
