@@ -1,0 +1,39 @@
+#!/usr/bin/env node
+// claude -p --output-format stream-json 을 한 줄씩 읽어, 에이전트가 무엇을 하는지 짧게 찍는다(라인 진행 보기).
+// 마지막 result 줄은 인자로 받은 파일(.factory/run.json)에 저장한다.
+// 사용: claude -p … --output-format stream-json --verbose | scripts/factory-log .factory/run.json
+import { createInterface } from 'node:readline';
+import { writeFileSync } from 'node:fs';
+
+const out = process.argv[2];
+const root = process.cwd() + '/';
+const short = (s = '') => String(s).replaceAll(root, '').split('\n')[0].slice(0, 90);
+const say = (sub, s) => console.log(`${sub ? '   └ ' : ' ▸ '}${s}`);
+const t0 = Date.now();
+
+for await (const line of createInterface({ input: process.stdin })) {
+  let e; try { e = JSON.parse(line); } catch { continue; }
+  const sub = !!e.parent_tool_use_id;
+  if (e.type === 'assistant') {
+    for (const c of e.message?.content ?? []) {
+      if (c.type !== 'tool_use') continue;
+      const i = c.input ?? {};
+      if (c.name === 'Task' || c.name === 'Agent') say(sub, `서브에이전트 ${i.subagent_type ?? ''}`);
+      else if (c.name === 'Skill') say(sub, `스킬 ${i.skill ?? i.name ?? ''}`);
+      else if (c.name === 'Bash') say(sub, `$ ${short(i.command)}`);
+      else if (c.name === 'Edit' || c.name === 'Write' || c.name === 'MultiEdit') say(sub, `고침 ${short(i.file_path)}`);
+      else if (c.name === 'Read') say(sub, `읽음 ${short(i.file_path)}`);
+      else if (c.name === 'Grep' || c.name === 'Glob') say(sub, `찾음 ${short(i.pattern)}`);
+    }
+  } else if (e.type === 'user') {
+    for (const c of e.message?.content ?? []) {
+      if (c.type === 'tool_result' && c.is_error) {
+        const text = Array.isArray(c.content) ? c.content.map((x) => x.text ?? '').join(' ') : String(c.content ?? '');
+        if (/지식 잠금|knowledge-lock/.test(text)) say(sub, `✕ 지식 잠금에 막힘`);
+      }
+    }
+  } else if (e.type === 'result') {
+    writeFileSync(out, JSON.stringify(e, null, 1));
+    console.log(` ■ 끝 ${Math.round((Date.now() - t0) / 1000)}초`);
+  }
+}

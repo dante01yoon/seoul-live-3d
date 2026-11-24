@@ -22,6 +22,8 @@ gh issue list --label knowledge:flag --state open --json number,title,body,comme
   -q '.[] | "## #\(.number) \(.title)\n\n\(.body)\n\n" + ([.comments[] | "- 댓글: \(.body)"] | join("\n"))' \
   > "$dir/.curator/flags.md"
 
+echo "신고 $(grep -c '^## #' "$dir/.curator/flags.md" || true)건 · 작업대 $dir"
+
 # 2) 사람의 말: 최근 PR의 댓글·리뷰·코드 줄 댓글
 repo=$(gh repo view --json nameWithOwner -q .nameWithOwner)
 {
@@ -45,6 +47,8 @@ repo=$(gh repo view --json nameWithOwner -q .nameWithOwner)
 # 대신 끝난 뒤 이 스크립트가 바뀐 경로를 검사한다. 지식 잠금 훅은 그대로 돈다.
 (cd "$dir" && FACTORY_ROLE=curator claude -p --agent knowledge-curator --permission-mode bypassPermissions \
   "오늘 밤 지식 정리를 해 줘. 기록 시작일 $since. .curator/의 파일부터 읽어.")
+
+echo "큐레이터 끝 → 바뀐 경로 검사"
 
 # 5) 경로 검사: 지식 말고 다른 파일을 건드렸으면 PR을 열지 않는다.
 cd "$dir"

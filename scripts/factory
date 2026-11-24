@@ -22,6 +22,7 @@ if [ ! -d "$dir" ]; then
   fi
 fi
 mkdir -p "$dir/.factory"
+echo "작업대 $dir ($branch)"
 start=$(git -C "$dir" rev-parse HEAD)
 
 # 에이전트가 쓸 수 있는 명령만 허용한다. push·PR은 없다(아래에서 스크립트가 한다).
@@ -31,7 +32,8 @@ allowed=(Read Grep Glob Edit Write Task Skill
   "Bash(git show:*)" "Bash(git stash:*)" "Bash(ls:*)" "Bash(cat:*)" "Bash(grep:*)" "Bash(sed -n:*)"
   "Bash(head:*)" "Bash(tail:*)" "Bash(wc:*)" "Bash(find:*)" "Bash(mkdir:*)")
 (cd "$dir" && FACTORY_BASE="$base_branch" claude -p "/factory-fix $n" \
-  --permission-mode acceptEdits --allowedTools "${allowed[@]}" --output-format json > .factory/run.json)
+  --permission-mode acceptEdits --allowedTools "${allowed[@]}" --output-format stream-json --verbose \
+  | "$root/scripts/factory-log" .factory/run.json)
 
 cd "$dir"
 fail() { echo "STOP: $*  (작업대 $dir)" >&2; exit 1; }
@@ -42,6 +44,7 @@ knowledge=$(git diff --name-only "$start" | grep -E '(^|/)CLAUDE\.md$|^\.claude/
 npm test >/dev/null 2>&1 || fail "npm test 실패"
 [ -s .factory/pr.md ] || fail "PR 본문(.factory/pr.md)이 없습니다."
 
+echo "검사 통과: 새 커밋 · 지식 파일 안 바뀜 · npm test → push · PR"
 git push -q -u origin "$branch"
 if gh pr view "$branch" >/dev/null 2>&1; then
   gh pr comment "$branch" --body-file .factory/pr.md
