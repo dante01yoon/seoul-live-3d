@@ -58,7 +58,7 @@
 <p><span class="data-month">2026년 9월</span> 한 달 동안 역별 승하차 인원 (합계)</p>
 
 <h2>역별 하루 요약</h2>
-<p style="color: var(--text-muted); font-size: 13px"><span class="data-month">2026년 9월</span> 한 달 합계를 그 달 일수로 나눈 하루 평균과, 승차·하차가 가장 많은 시간대입니다.</p>
+<p style="color: var(--text-muted); font-size: 13px"><span class="data-month">2026년 9월</span> 한 달 합계를 그 달 일수로 나눈 하루 평균, 한 달 승하차 합계와, 승차·하차가 가장 많은 시간대입니다.</p>
 <div class="summary" id="summary"></div>
 
 <h2>시간대별 3D 승하차</h2>
@@ -96,7 +96,7 @@
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { CSS2DRenderer, CSS2DObject } from "three/addons/renderers/CSS2DRenderer.js";
-import { HOURS, count, busiestHours, quietestInWindow, usageMonth } from "./stats.mjs";
+import { HOURS, count, busiestHours, monthTotalItem, quietestInWindow, usageMonth } from "./stats.mjs";
 import { SUBWAY_CSV, fetchCsv, toSubwayRows } from "./subway-csv.mjs";
 
 const W = 340, H = 180, M = { top: 10, right: 8, bottom: 22, left: 40 };
@@ -174,12 +174,14 @@ function drawSummary(row) {
   const month = usageMonth(row);
   const daily = (kind) => month ? `${fmt(Math.round(HOURS.reduce((a, h) => a + count(row, h, kind), 0) / month.days))}명` : "—";
   const hourNames = (hours) => hours.map(hourName).join(", ");
+  const monthItem = monthTotalItem(row);
   const card = document.createElement("div");
   card.className = "card";
   card.innerHTML = `<h3>${row.STTN} <span style="color: var(--text-muted); font-weight: 400">${row.SBWY_ROUT_LN_NM}</span></h3>
     <dl>
       <dt><i class="dot" style="background: var(--series-on)"></i>하루 평균 승차</dt><dd>${daily("ON")}</dd>
       <dt><i class="dot" style="background: var(--series-off)"></i>하루 평균 하차</dt><dd>${daily("OFF")}</dd>
+      <dt>${monthItem.label}</dt><dd>${monthItem.value}</dd>
       <dt>승차 최다</dt><dd>${hourNames(busiestHours(row, "ON"))}</dd>
       <dt>하차 최다</dt><dd>${hourNames(busiestHours(row, "OFF"))}</dd>
       <dt>가장 한가한 때</dt><dd>${hourNames(quietestInWindow(row, HOURS))}</dd>

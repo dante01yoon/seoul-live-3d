@@ -55,3 +55,10 @@ export function usageMonth(row) {
   if (month < 1 || month > 12) return null;
   return { year, month, days: new Date(year, month, 0).getDate(), label: `${year}년 ${month}월` };
 }
+
+// 역별 하루 요약(index.html) 카드의 한 달 승하차 합계 줄. 값은 만 명 단위(manPeople)다.
+// 기준 달을 모르면 달 이름 없이 「한 달 승하차」로 쓴다.
+export function monthTotalItem(row) {
+  const month = usageMonth(row);
+  return { label: `${month ? `${month.month}월 ` : ""}한 달 승하차`, value: manPeople(monthTotal(row)) };
+}
