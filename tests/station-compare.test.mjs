@@ -1,6 +1,18 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { compareDaily, compareSearch, findStationByName, readCompareParam, riderRanks } from "../station-compare.mjs";
+import { compareDaily, compareMonthLine, compareSearch, findStationByName, readCompareParam, riderRanks } from "../station-compare.mjs";
+
+test("두 역 비교의 한 달 합계 줄은 만 명 단위(manPeople)로 쓴다", () => {
+  assert.equal(
+    compareMonthLine("2026년 9월", [{ name: "강남", monthTotal: 4443210 }, { name: "작은역", monthTotal: 9876 }]),
+    "2026년 9월 한 달 합계 강남 <b>약 444.3만 명</b> · 작은역 <b>9,876명</b>",
+  );
+});
+
+test("한 달 합계 줄은 역 이름과 달 문구를 이스케이프한다", () => {
+  const s = compareMonthLine("9월&", [{ name: "<i>", monthTotal: 1 }, { name: "a", monthTotal: 2 }]);
+  assert.ok(!s.includes("<i>") && s.includes("&#60;i&#62;") && s.startsWith("9월&#38;"));
+});
 
 test("합계·피크·더 많은 칸 수·차이가 가장 큰 칸", () => {
   const r = compareDaily([10, 50, 30, 0], [20, 10, 30, 0]);

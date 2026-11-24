@@ -533,7 +533,7 @@ import { DOCK_RADIUS_M, RECOMMEND_LIMIT, crowdAtHour, recommend } from "./recomm
 import { PLACE_ALERT_LEVELS, STATION_ALERT_RATIOS, activeAlerts, kstHour, newAlerts, throttleAlerts } from "./alerts.mjs";
 import { DB_DOWN_MESSAGE, dbErrorText } from "./db-status.mjs";
 import { norm, searchStations } from "./station-search.mjs";
-import { compareDaily, compareSearch, findStationByName, placePeakLabels, readCompareParam, riderRanks } from "./station-compare.mjs";
+import { compareDaily, compareMonthLine, compareSearch, findStationByName, placePeakLabels, readCompareParam, riderRanks } from "./station-compare.mjs";
 
 const pad = (h) => String(h).padStart(2, "0");
 const hourLabel = (h) => `${pad(h)}시대`;
@@ -1065,12 +1065,13 @@ function renderCompare(row) {
     cross.setAttribute("visibility", "hidden");
   });
 
-  // 요약: 하루 합계, 각 역 피크, 차이가 가장 큰 시간대
+  // 요약: 하루 합계, 한 달 합계(만 명 단위), 각 역 피크, 차이가 가장 큰 시간대
   const times = c.totalA && c.totalB ? (c.totalA >= c.totalB ? c.totalA / c.totalB : c.totalB / c.totalA) : null;
   const bigger = c.totalA >= c.totalB ? nameA : nameB;
   const peakText = (s) => (s.peak < 0 ? `${esc(s.name)} 기록 없음` : `${esc(s.name)} ${hourLabel(HOURS[s.peak])}`);
   let html = `하루 합계 ${esc(nameA)} <b>${fmt(c.totalA)}</b>명 · ${esc(nameB)} <b>${fmt(c.totalB)}</b>명`;
   if (times && compareEntry !== selected.entry) html += ` (${esc(bigger)} 쪽이 ${times.toLocaleString("ko-KR", { maximumFractionDigits: 1 })}배)`;
+  html += `<br>${compareMonthLine(monthLabel, [selected.entry, compareEntry])}`;
   html += `<br>가장 붐비는 때 ${series.map(peakText).join(", ")}`;
   if (c.widest >= 0) html += `<br>차이가 가장 큰 때 ${hourLabel(HOURS[c.widest])}(<b>${fmt(Math.abs(a[c.widest] - b[c.widest]))}</b>명)`;
   html += `<br>더 많은 시간대 ${esc(nameA)} ${c.moreA}개 · ${esc(nameB)} ${c.moreB}개`;
